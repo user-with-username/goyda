@@ -1,0 +1,9 @@
+[package]
+name = "goyda-macro-rules"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+paste = "1.0.15"
+jni = { version = "0.21.1", features = ["invocation"] }
+inventory = "0.3.15"

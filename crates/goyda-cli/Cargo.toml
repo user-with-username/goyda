@@ -1,0 +1,18 @@
+[package]
+name = "goyda-cli"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0"
+cargo_metadata = "0.18"
+clap = { version = "4.5", features = ["derive"] }
+dirs = "5.0"
+ureq = { version = "2.10", features = ["tls"] }
+goyda = { path = "../goyda" }
+inventory = "0.3.15"
+dunce = "1.0.5"
+which = "8.0.5"
+zip = "8.6.0"
+cargo_toml = "1.0.0"
+colored = "2.0"

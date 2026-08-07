@@ -1,0 +1,15 @@
+[package]
+name = "goyda-macros"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+proc-macro = true
+
+[dependencies]
+goyda-macro-rules = { path = "./goyda-macro-rules" }
+syn = { version = "2.0", features = ["full", "extra-traits", "visit", "visit-mut"] }
+quote = "1.0"
+proc-macro2 = "1.0"
+jni = { version = "0.21.1", features = ["invocation"] }
+petgraph = "0.8.3"
