@@ -11,7 +11,7 @@ const FONT_SIZE_2XL: i32 = 24;
 pub fn counter_page() -> Component {
     let mut count = 0;
     let mut doubled = count * 2;
-    eprintln!("Rendering counter_page with count");
+    let mut history: Vec<i32> = Vec::new();
 
     stack! {
         direction: Vertical,
@@ -22,6 +22,12 @@ pub fn counter_page() -> Component {
             .font_size(FONT_SIZE_2XL),
 
         text { "Doubled: ", doubled }
+            .color(COLOR_MUTED),
+
+        text { "At zero: ", count == 0 }
+            .color(COLOR_MUTED),
+
+        text { "Logged so far: ", history.len() }
             .color(COLOR_MUTED),
 
         button {
@@ -43,8 +49,17 @@ pub fn counter_page() -> Component {
             .rounded(2),
 
         button {
-            text: "Reset",
-            on_click: count = 0,
+            text: "Log count",
+            on_click: history.push(count),
+        }
+            .background(COLOR_PRIMARY)
+            .px(4)
+            .py(2)
+            .rounded(2),
+
+        button {
+            text: "Reset to doubled",
+            on_click: count = doubled,
         }
             .padding(8, 16)
             .border_color(COLOR_MUTED)
