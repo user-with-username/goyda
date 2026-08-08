@@ -65,7 +65,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 name = "goyda"
 version = "0.1.0"
 dependencies = [
- "goyda-macro-rules",
+ "goyda-derive",
  "goyda-macros",
  "inventory",
  "jni",
@@ -74,24 +74,23 @@ dependencies = [
 ]
 
 [[package]]
-name = "goyda-macro-rules"
+name = "goyda-derive"
 version = "0.1.0"
 dependencies = [
- "inventory",
  "jni",
- "paste",
+ "petgraph",
+ "proc-macro2",
+ "quote",
+ "syn",
 ]
 
 [[package]]
 name = "goyda-macros"
 version = "0.1.0"
 dependencies = [
- "goyda-macro-rules",
+ "inventory",
  "jni",
- "petgraph",
- "proc-macro2",
- "quote",
- "syn",
+ "paste",
 ]
 
 [[package]]

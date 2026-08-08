@@ -1,4 +1,4 @@
-use goyda_macro_rules::define_native_listener;
+use goyda_macros::define_native_listener;
 
 define_native_listener! {
     mod_name = click,
