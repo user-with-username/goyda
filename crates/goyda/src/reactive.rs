@@ -52,6 +52,25 @@ impl<T: Clone + 'static> Signal<T> {
     }
 }
 
+impl<T: Clone + PartialEq + 'static> Signal<T> {
+    pub fn call<R>(&self, f: impl FnOnce(&mut T) -> R) -> R {
+        RUNNING_EFFECT.with(|current| {
+            if let Some(effect) = &*current.borrow() {
+                let mut subs = self.subscribers.borrow_mut();
+                if !subs.iter().any(|s| Rc::ptr_eq(s, effect)) {
+                    subs.push(effect.clone());
+                }
+            }
+        });
+        let before = self.value.borrow().clone();
+        let result = f(&mut *self.value.borrow_mut());
+        if *self.value.borrow() != before {
+            self.notify();
+        }
+        result
+    }
+}
+
 impl<T: Clone + 'static> Clone for Signal<T> {
     fn clone(&self) -> Self {
         Self {

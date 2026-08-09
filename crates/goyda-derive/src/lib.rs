@@ -245,7 +245,7 @@ impl UiMacroTransformer {
                         if let Some(TokenTree::Ident(member)) = trees.get(i + 2).cloned() {
                             let member_name = member.to_string();
 
-                            if matches!(member_name.as_str(), "get" | "set" | "update" | "clone") {
+                            if matches!(member_name.as_str(), "get" | "set" | "update" | "clone" | "call") {
                                 let shadow_ident = syn::Ident::new(
                                     &format!("{}_ui_shadow_{}", ident, counter),
                                     ident.span()
@@ -262,58 +262,23 @@ impl UiMacroTransformer {
                                 _ => None,
                             };
 
-                            const MUTATING_METHODS: &[&str] = &[
-                                // Vec / VecDeque / slice
-                                "push", "pop", "insert", "remove", "swap_remove", "clear",
-                                "extend", "extend_from_slice", "append", "truncate",
-                                "retain", "retain_mut", "drain", "dedup", "dedup_by",
-                                "dedup_by_key", "sort", "sort_by", "sort_by_key",
-                                "sort_unstable", "sort_unstable_by", "sort_unstable_by_key",
-                                "reverse", "resize", "resize_with", "fill", "fill_with",
-                                "rotate_left", "rotate_right", "swap", "split_off",
-                                "push_front", "push_back", "pop_front", "pop_back",
-                                // String
-                                "push_str", "insert_str", "replace_range", "splice",
-                                // HashMap / HashSet / BTreeMap / BTreeSet
-                                "toggle",
-                            ];
-
                             if let Some(group) = call_group {
-                                let is_mutating = MUTATING_METHODS.contains(&member_name.as_str());
                                 let processed_args = self.process_macro_tokens(group.stream(), counter, pre_clones);
 
-                                if is_mutating {
-                                    let mutation_shadow = syn::Ident::new(
-                                        &format!("{}_mut_shadow_{}", ident, counter),
-                                        ident.span()
-                                    );
-                                    *counter += 1;
-                                    pre_clones.push(quote! { let #mutation_shadow = #ident.clone(); });
+                                let call_shadow = syn::Ident::new(
+                                    &format!("{}_call_shadow_{}", ident, counter),
+                                    ident.span()
+                                );
+                                *counter += 1;
+                                pre_clones.push(quote! { let #call_shadow = #ident.clone(); });
 
-                                    let replacement = quote! {
-                                        #mutation_shadow.update(|v| { v.#member(#processed_args); })
-                                    };
-                                    let replacement_trees: Vec<TokenTree> = replacement.into_iter().collect();
-                                    trees.splice(i..=(i + 3), replacement_trees.clone());
-                                    i += replacement_trees.len();
-                                    continue;
-                                } else {
-                                    let shadow_ident = syn::Ident::new(
-                                        &format!("{}_ui_shadow_{}", ident, counter),
-                                        ident.span()
-                                    );
-                                    *counter += 1;
-                                    pre_clones.push(quote! { let #shadow_ident = #ident.clone(); });
-
-                                    let new_call_group = Group::new(proc_macro2::Delimiter::Parenthesis, processed_args);
-                                    trees[i + 3] = TokenTree::Group(new_call_group);
-
-                                    let replacement = quote! { #shadow_ident.get() };
-                                    let replacement_trees: Vec<TokenTree> = replacement.into_iter().collect();
-                                    trees.splice(i..=i, replacement_trees.clone());
-                                    i += replacement_trees.len();
-                                    continue;
-                                }
+                                let replacement = quote! {
+                                    #call_shadow.call(|v| v.#member(#processed_args))
+                                };
+                                let replacement_trees: Vec<TokenTree> = replacement.into_iter().collect();
+                                trees.splice(i..=(i + 3), replacement_trees.clone());
+                                i += replacement_trees.len();
+                                continue;
                             }
 
                             let is_field_assign = matches!(trees.get(i + 3), Some(TokenTree::Punct(p)) if p.as_char() == '=')
@@ -335,15 +300,15 @@ impl UiMacroTransformer {
                                     pre_clones,
                                 );
 
-                                let mutation_shadow = syn::Ident::new(
-                                    &format!("{}_mut_shadow_{}", ident, counter),
+                                let call_shadow = syn::Ident::new(
+                                    &format!("{}_call_shadow_{}", ident, counter),
                                     ident.span()
                                 );
                                 *counter += 1;
-                                pre_clones.push(quote! { let #mutation_shadow = #ident.clone(); });
+                                pre_clones.push(quote! { let #call_shadow = #ident.clone(); });
 
                                 let replacement = quote! {
-                                    #mutation_shadow.update(|v| v.#member = #right_stream)
+                                    #call_shadow.call(|v| v.#member = #right_stream)
                                 };
                                 let replacement_trees: Vec<TokenTree> = replacement.into_iter().collect();
                                 trees.splice(i..j, replacement_trees.clone());
@@ -351,16 +316,16 @@ impl UiMacroTransformer {
                                 continue;
                             }
 
-                            let shadow_ident = syn::Ident::new(
-                                &format!("{}_ui_shadow_{}", ident, counter),
+                            let call_shadow = syn::Ident::new(
+                                &format!("{}_call_shadow_{}", ident, counter),
                                 ident.span()
                             );
                             *counter += 1;
-                            pre_clones.push(quote! { let #shadow_ident = #ident.clone(); });
+                            pre_clones.push(quote! { let #call_shadow = #ident.clone(); });
 
-                            let replacement = quote! { #shadow_ident.get() };
+                            let replacement = quote! { #call_shadow.call(|v| v.#member) };
                             let replacement_trees: Vec<TokenTree> = replacement.into_iter().collect();
-                            trees.splice(i..=i, replacement_trees.clone());
+                            trees.splice(i..=(i + 2), replacement_trees.clone());
                             i += replacement_trees.len();
                             continue;
                         }
