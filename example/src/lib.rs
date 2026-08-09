@@ -12,7 +12,6 @@ pub fn counter_page() -> Component {
     let mut count = 0;
     let mut doubled = count * 2;
     let mut history: Vec<i32> = Vec::new();
-    eprintln!("Rendering counter_page with count");
 
     stack! {
         direction: Vertical,
