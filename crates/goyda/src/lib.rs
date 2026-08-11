@@ -1,11 +1,20 @@
+#[cfg(feature = "android")]
 pub use jni;
 pub use inventory;
+#[cfg(feature = "web")]
+pub use wasm_bindgen;
 
 pub mod components;
 pub mod core;
+pub mod listeners;
 pub mod macros;
+pub mod platform;
 pub mod reactive;
+
+#[cfg(feature = "android")]
 pub mod android;
+#[cfg(feature = "web")]
+pub mod web;
 
 pub use crate::components::{Component, LayoutDirection, Color, Modifier};
 pub use crate::components::{Axis, Edge, StyleValue, StyleProperty};

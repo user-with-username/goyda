@@ -68,7 +68,6 @@ dependencies = [
  "goyda-derive",
  "goyda-macros",
  "inventory",
- "jni",
  "once_cell",
  "paste",
 ]
@@ -87,11 +86,6 @@ dependencies = [
 [[package]]
 name = "goyda-macros"
 version = "0.1.0"
-dependencies = [
- "inventory",
- "jni",
- "paste",
-]
 
 [[package]]
 name = "hashbrown"

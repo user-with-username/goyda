@@ -62,9 +62,9 @@ macro_rules! parse_children {
             handlers: vec![
                 $crate::components::Handler {
                     attach: |backend_ptr, view_ptr, callback| unsafe {
-                        let backend = &mut *(backend_ptr as *mut $crate::android::AndroidBackend);
-                        let view = &*(view_ptr as *const <$crate::android::AndroidBackend as $crate::core::Backend>::PlatformView);
-                        $crate::android::listeners::$event_name::attach(backend, view, callback);
+                        let backend = &mut *(backend_ptr as *mut $crate::platform::ActiveBackend);
+                        let view = &*(view_ptr as *const <$crate::platform::ActiveBackend as $crate::core::Backend>::PlatformView);
+                        $crate::platform::active_listeners::$event_name::attach(backend, view, callback);
                     },
                     callback: std::rc::Rc::new(move |_e| {
                         let mut _action_closure = || { $action };
@@ -83,9 +83,9 @@ macro_rules! parse_children {
             handlers: vec![
                 $crate::components::Handler {
                     attach: |backend_ptr, view_ptr, callback| unsafe {
-                        let backend = &mut *(backend_ptr as *mut $crate::android::AndroidBackend);
-                        let view = &*(view_ptr as *const <$crate::android::AndroidBackend as $crate::core::Backend>::PlatformView);
-                        $crate::android::listeners::$event_name::attach(backend, view, callback);
+                        let backend = &mut *(backend_ptr as *mut $crate::platform::ActiveBackend);
+                        let view = &*(view_ptr as *const <$crate::platform::ActiveBackend as $crate::core::Backend>::PlatformView);
+                        $crate::platform::active_listeners::$event_name::attach(backend, view, callback);
                     },
                     callback: std::rc::Rc::new(move |_e| {
                         let mut _action_closure = || { $action };
@@ -103,9 +103,9 @@ macro_rules! parse_children {
             handlers: vec![
                 $crate::components::Handler {
                     attach: |backend_ptr, view_ptr, callback| unsafe {
-                        let backend = &mut *(backend_ptr as *mut $crate::android::AndroidBackend);
-                        let view = &*(view_ptr as *const <$crate::android::AndroidBackend as $crate::core::Backend>::PlatformView);
-                        $crate::android::listeners::$event_name::attach(backend, view, callback);
+                        let backend = &mut *(backend_ptr as *mut $crate::platform::ActiveBackend);
+                        let view = &*(view_ptr as *const <$crate::platform::ActiveBackend as $crate::core::Backend>::PlatformView);
+                        $crate::platform::active_listeners::$event_name::attach(backend, view, callback);
                     },
                     callback: std::rc::Rc::new(move |_e| {
                         let mut _action_closure = || { $action };
@@ -123,9 +123,9 @@ macro_rules! parse_children {
             handlers: vec![
                 $crate::components::Handler {
                     attach: |backend_ptr, view_ptr, callback| unsafe {
-                        let backend = &mut *(backend_ptr as *mut $crate::android::AndroidBackend);
-                        let view = &*(view_ptr as *const <$crate::android::AndroidBackend as $crate::core::Backend>::PlatformView);
-                        $crate::android::listeners::$event_name::attach(backend, view, callback);
+                        let backend = &mut *(backend_ptr as *mut $crate::platform::ActiveBackend);
+                        let view = &*(view_ptr as *const <$crate::platform::ActiveBackend as $crate::core::Backend>::PlatformView);
+                        $crate::platform::active_listeners::$event_name::attach(backend, view, callback);
                     },
                     callback: std::rc::Rc::new(move |_e| {
                         let mut _action_closure = || { $action };

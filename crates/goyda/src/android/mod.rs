@@ -1,12 +1,10 @@
 pub mod backend;
 pub use backend::AndroidBackend;
-pub mod listeners;
 pub mod classgen;
 
 use jni::objects::GlobalRef;
 use once_cell::sync::OnceCell;
 use std::sync::Mutex;
-use classgen::*;
 
 pub static BRIDGE: OnceCell<Mutex<AndroidBridge>> = OnceCell::new();
 

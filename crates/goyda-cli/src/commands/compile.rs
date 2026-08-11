@@ -13,10 +13,15 @@ pub fn compile(platform: String, target: String, manifest_dir: PathBuf) -> Resul
     let handler = platform.handler();
 
     if !handler.is_implemented() {
+        let implemented: Vec<&str> = Platform::all()
+            .iter()
+            .filter(|p| p.handler().is_implemented())
+            .map(Platform::as_str)
+            .collect();
         bail!(
-            "Platform '{}' is registered but not implemented yet. \
-             Supported platforms today: android.",
-            platform.as_str()
+            "Platform '{}' is registered but not implemented yet. Supported platforms today: {}.",
+            platform.as_str(),
+            implemented.join(", ")
         );
     }
 

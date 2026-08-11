@@ -4,6 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-paste = "1.0.15"
-jni = { version = "0.21.1", features = ["invocation"] }
-inventory = "0.3.15"
+# Note: this crate only ever *emits* paths like `::jni::...`, `::paste::paste!`,
+# and `::inventory::submit!` as tokens inside macro_rules! bodies - those
+# resolve in the crate where the macro is expanded (goyda), not here. Nothing
+# in this crate's own compiled code touches jni/paste/inventory directly, so
+# it deliberately has no dependency on any of them (keeps this crate, and by
+# extension every non-android target, free of the native `jni` dependency).

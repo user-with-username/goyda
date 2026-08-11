@@ -262,6 +262,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "console_error_panic_hook"
+version = "0.1.7"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a06aeb73f470f66dcdbf7223caeebb85984942f22f1adb2a088cf9668146bbbc"
+dependencies = [
+ "cfg-if",
+ "wasm-bindgen",
+]
+
+[[package]]
 name = "const-oid"
 version = "0.10.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -480,12 +490,16 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 name = "goyda"
 version = "0.1.0"
 dependencies = [
+ "console_error_panic_hook",
  "goyda-derive",
  "goyda-macros",
  "inventory",
  "jni",
+ "js-sys",
  "once_cell",
  "paste",
+ "wasm-bindgen",
+ "web-sys",
 ]
 
 [[package]]
@@ -520,11 +534,6 @@ dependencies = [
 [[package]]
 name = "goyda-macros"
 version = "0.1.0"
-dependencies = [
- "inventory",
- "jni",
- "paste",
-]
 
 [[package]]
 name = "hashbrown"
@@ -1408,6 +1417,16 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "dc1b4cb0cc549fcf58d7dfc081778139b3d283a081644e833e84682ad71cea24"
 dependencies = [
  "unicode-ident",
+]
+
+[[package]]
+name = "web-sys"
+version = "0.3.103"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8622dcb61c0bcc9fffa6938bed81210af2da9a7e4a1a834b2e37a59b6dfb6141"
+dependencies = [
+ "js-sys",
+ "wasm-bindgen",
 ]
 
 [[package]]
