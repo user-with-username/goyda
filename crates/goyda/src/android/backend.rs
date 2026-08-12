@@ -29,9 +29,9 @@ fn resolve_color(value: &StyleValue) -> Option<i32> {
 fn resolve_length(value: &StyleValue) -> Option<i32> {
     let v = goyda_utils::style::resolve_length(value);
     if v.is_none() {
-        if let StyleValue::Spacing(_) = value {
+        if let StyleValue::Spacing(_scale) = value {
             #[cfg(debug_assertions)]
-            eprintln!("goyda(android): spacing scale index {scale} out of range");
+            eprintln!("goyda(android): spacing scale index {_scale} out of range");
         }
     }
     v.map(|v| (v * 3.0) as i32)
