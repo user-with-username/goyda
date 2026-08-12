@@ -127,6 +127,14 @@ fn handle_connection(stream: TcpStream, dist_dir: &Path) -> Result<()> {
 
     match fs::read(&file_path) {
         Ok(body) => write_response(&mut stream, 200, "OK", content_type(&file_path), &body),
+        // SPA fallback: an extensionless path that isn't a real file is a
+        // client-side route (e.g. `/about`), not a missing asset - serve
+        // `index.html` so goyda can read the URL and mount the right
+        // `#[page(...)]` itself, same as a direct link or a page refresh.
+        Err(_) if file_path.extension().is_none() => match fs::read(dist_dir.join("index.html")) {
+            Ok(body) => write_response(&mut stream, 200, "OK", "text/html; charset=utf-8", &body),
+            Err(_) => write_response(&mut stream, 404, "Not Found", "text/plain", b"404 Not Found"),
+        },
         Err(_) => write_response(&mut stream, 404, "Not Found", "text/plain", b"404 Not Found"),
     }
 }

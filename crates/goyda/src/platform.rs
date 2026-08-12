@@ -26,6 +26,18 @@ pub use crate::web::backend::WebBackend as ActiveBackend;
 #[cfg(all(feature = "android", not(feature = "web")))]
 pub use crate::android::backend::AndroidBackend as ActiveBackend;
 
+/// Switches the mounted app to whichever `#[page(...)]` is registered for
+/// `path` (falling back to `"/"` if there's no exact match) - the same
+/// single entry point on every backend, so `goyda::navigate("/about")` reads
+/// identically regardless of which platform feature is enabled. A missing
+/// route is a silent no-op in release builds and a console/stderr warning in
+/// debug builds, matching how an unmatched initial route is already handled.
+#[cfg(feature = "web")]
+pub use crate::web::navigate;
+
+#[cfg(all(feature = "android", not(feature = "web")))]
+pub use crate::android::navigate;
+
 #[cfg(not(any(feature = "android", feature = "web")))]
 compile_error!(
     "goyda: no platform backend selected. Enable exactly one of the \"android\" or \"web\" \

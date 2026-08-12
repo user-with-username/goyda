@@ -1,6 +1,9 @@
 pub mod backend;
 pub use backend::AndroidBackend;
+pub mod bootstrap;
 pub mod classgen;
+
+pub use bootstrap::navigate;
 
 use jni::objects::GlobalRef;
 use once_cell::sync::OnceCell;
@@ -10,7 +13,8 @@ pub static BRIDGE: OnceCell<Mutex<AndroidBridge>> = OnceCell::new();
 
 pub struct AndroidBridge {
     pub root: GlobalRef,
-    pub ui_tree: crate::Component, 
+    pub context: GlobalRef,
+    pub ui_tree: crate::Component,
 }
 
 /// # Safety

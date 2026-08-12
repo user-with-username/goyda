@@ -1,6 +1,5 @@
 extern crate proc_macro;
 
-mod android;
 mod utils;
 mod scanner;
 mod transformer;
@@ -28,8 +27,14 @@ pub fn page(attr: TokenStream, item: TokenStream) -> TokenStream {
     let fn_name = &input_fn.sig.ident;
     let module_name = syn::Ident::new(&format!("__goyda_page_container_{}", fn_name), fn_name.span());
     let register_name = syn::Ident::new(&format!("__GOYDA_PAGE_{}", fn_name), fn_name.span());
-    let jni_code = android::jni_code(fn_name);
 
+    // Registration only - every platform resolves `#[page(...)]` routes the
+    // same way, through `goyda::find_page` against the `Page` inventory
+    // built up here. Android's native entry point (`JNI_OnLoad`/
+    // `nativeInit`) lives once in the `goyda` crate itself instead of being
+    // generated per `#[page]`, since a consumer app can register more than
+    // one page and two macro-generated `JNI_OnLoad`s in the same crate would
+    // collide at link time.
     let expanded = quote! {
         #input_fn
 
@@ -45,57 +50,6 @@ pub fn page(attr: TokenStream, item: TokenStream) -> TokenStream {
 
             ::goyda::inventory::submit! {
                 #register_name
-            }
-
-            #[cfg(target_os = "android")]
-            #[doc(hidden)]
-            mod __goyda_backend {
-                use ::goyda::jni::{
-                    objects::{JClass, JObject, JString, JValue, JMethodID},
-                    sys::{jint, jlong, JNI_VERSION_1_6},
-                    JNIEnv, JavaVM, NativeMethod,
-                };
-                use ::goyda::jni::strings::JNIString;
-                use ::goyda::android::backend::{AndroidBackend, AndroidView, JVM};
-                use ::std::ffi::c_void;
-                use ::std::cell::RefCell;
-
-                type AndroidBridge = ::goyda::android::AndroidBridge;
-
-                thread_local! {
-                    pub static REAL_BRIDGE: RefCell<Option<AndroidBridge>> = RefCell::new(None);
-                }
-
-                #[allow(non_camel_case_types)]
-                pub struct BRIDGE_EMULATOR;
-
-                pub trait UnwrappableBridge {
-                    fn unwrap_bridge(self) -> AndroidBridge;
-                }
-
-                impl UnwrappableBridge for AndroidBridge {
-                    fn unwrap_bridge(self) -> AndroidBridge { self }
-                }
-
-                impl UnwrappableBridge for ::std::sync::Mutex<AndroidBridge> {
-                    fn unwrap_bridge(self) -> AndroidBridge {
-                        self.into_inner().unwrap_or_else(|e| e.into_inner())
-                    }
-                }
-
-                impl BRIDGE_EMULATOR {
-                    pub fn set<U: UnwrappableBridge>(&self, value: U) -> Result<(), &'static str> {
-                        REAL_BRIDGE.with(|cell| {
-                            *cell.borrow_mut() = Some(value.unwrap_bridge());
-                        });
-                        Ok(())
-                    }
-                }
-
-                #[allow(non_upper_case_globals)]
-                pub static BRIDGE: BRIDGE_EMULATOR = BRIDGE_EMULATOR;
-
-                #jni_code
             }
         }
     };

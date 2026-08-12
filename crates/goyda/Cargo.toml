@@ -39,6 +39,8 @@ features = [
     "Blob",
     "BlobPropertyBag",
     "Url",
+    "History",
+    "PopStateEvent",
 ]
 
 [features]

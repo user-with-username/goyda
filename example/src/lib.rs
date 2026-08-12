@@ -1,4 +1,4 @@
-use goyda::prelude::{page, stack, Component, Color, asset};
+use goyda::prelude::{page, stack, Component, Color, asset, navigate};
 
 const COLOR_PRIMARY: Color = Color::Custom(0xFF3949AB);
 const COLOR_MUTED: Color = Color::GRAY;
@@ -67,7 +67,42 @@ pub fn counter_page() -> Component {
             .padding(8, 16)
             .border_color(COLOR_MUTED)
             .border_width(1)
-            .opacity(0.8)
+            .opacity(0.8),
+
+        button {
+            text: "Go to About",
+            on_click: navigate("/about"),
+        }
+            .background(COLOR_MUTED)
+            .px(4)
+            .py(2)
+            .rounded(2)
+    }
+    .p(6)
+    .background(COLOR_DANGER)
+}
+
+#[page("/about")]
+pub fn about_page() -> Component {
+    stack! {
+        direction: Vertical,
+        spacing: 16,
+
+        text { "About" }
+            .color(COLOR_PRIMARY)
+            .font_size(FONT_SIZE_2XL),
+
+        text { "This page lives at /about and was reached via goyda::navigate()." }
+            .color(COLOR_MUTED),
+
+        button {
+            text: "Back to counter",
+            on_click: navigate("/"),
+        }
+            .background(COLOR_PRIMARY)
+            .px(4)
+            .py(2)
+            .rounded(2)
     }
     .p(6)
     .background(COLOR_DANGER)
