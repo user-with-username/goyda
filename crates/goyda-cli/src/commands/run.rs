@@ -47,6 +47,7 @@ pub fn execute_run(opts: RunOptions) -> Result<()> {
         crate_name,
         lib_name,
         target_directory: opts.manifest_dir.join("target"),
+        start,
     };
 
     let artifact_path = handler

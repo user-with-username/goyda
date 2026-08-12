@@ -13,6 +13,7 @@ pub struct BuildContext {
     pub crate_name: String,
     pub lib_name: String,
     pub target_directory: PathBuf,
+    pub start: std::time::Instant,
 }
 
 pub trait PlatformTarget {

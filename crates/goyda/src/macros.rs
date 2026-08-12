@@ -145,6 +145,24 @@ macro_rules! parse_children {
         $children.push($crate::Component::button($txt));
     };
 
+    ($children:ident, image { src: $src:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ , $($tail:tt)*) => {
+        $children.push($crate::Component::image($src) $( . $method ( $($args)* ) )+ );
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, image { src: $src:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ $(,)?) => {
+        $children.push($crate::Component::image($src) $( . $method ( $($args)* ) )+ );
+    };
+
+    ($children:ident, image { src: $src:expr $(,)? }, $($tail:tt)*) => {
+        $children.push($crate::Component::image($src));
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, image { src: $src:expr $(,)? } $(,)?) => {
+        $children.push($crate::Component::image($src));
+    };
+
     ($children:ident, $child:expr, $($tail:tt)+) => {
         $children.push($child);
         $crate::parse_children!($children, $($tail)+);
@@ -155,6 +173,38 @@ macro_rules! parse_children {
     };
 
     ($children:ident $(,)?) => {};
+}
+
+/// Embeds an asset's bytes into the binary at compile time (relative to the
+/// crate's `assets/` directory), e.g. `asset!("logo.svg")` or
+/// `asset!("fonts/Inter-Bold.ttf")`. A missing file is a compile error, and
+/// the resulting [`Asset`](crate::components::Asset) needs no platform
+/// filesystem/network access at runtime - it works identically on every
+/// backend. Best for small-to-medium files (images, fonts, icons); for
+/// large or rarely-used assets where binary size matters, use [`asset_ref!`]
+/// instead.
+#[macro_export]
+macro_rules! asset {
+    ($path:literal) => {
+        $crate::components::Asset::embedded(
+            $path,
+            include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/", $path)),
+        )
+    };
+}
+
+/// Like [`asset!`], checks at compile time that the file exists under the
+/// crate's `assets/` directory, but doesn't embed its bytes - the resulting
+/// [`Asset`](crate::components::Asset) is resolved by each backend at
+/// runtime instead (from the APK's packaged assets, or fetched by URL on
+/// web), same as it always has been. Use this for large or dynamic assets
+/// (video, audio, big image sets) that shouldn't bloat the binary.
+#[macro_export]
+macro_rules! asset_ref {
+    ($path:literal) => {{
+        const _: &[u8] = include_bytes!(concat!(env!("CARGO_MANIFEST_DIR"), "/assets/", $path));
+        $crate::components::Asset::new($path)
+    }};
 }
 
 #[macro_export]

@@ -10,13 +10,12 @@ use crate::term;
 
 const PREFERRED_PORT: u16 = 4173;
 
-pub fn serve_and_open(dist_dir: &Path) -> Result<()> {
-    let start = Instant::now();
+pub fn serve_and_open(dist_dir: &Path, start: Instant) -> Result<()> {
     let listener = bind_server(PREFERRED_PORT)?;
     let port = listener.local_addr().context("Failed to read local dev server address")?.port();
     let url = format!("http://127.0.0.1:{port}/");
 
-    term::ready(&format!("goyda web dev server at {url} (Ctrl+C to stop)"), start.elapsed());
+    term::ready(&format!("dev server at {url} (Ctrl+C to stop)"), start.elapsed());
     open_browser(&url);
 
     let dist_dir = dist_dir.to_path_buf();

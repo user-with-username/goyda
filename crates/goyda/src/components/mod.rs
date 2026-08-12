@@ -1,12 +1,15 @@
 pub mod text;
 pub mod button;
+pub mod image;
 pub mod layout;
 pub mod style;
 
 pub use text::Text;
 pub use button::Button;
+pub use image::Image;
 pub use layout::Stack;
 pub use style::{Axis, Edge, StyleProperty, StyleValue};
+pub use goyda_utils::{Asset, Color};
 
 use crate::core::Backend;
 use crate::core::events::{Event, Update};
@@ -15,16 +18,6 @@ use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum LayoutDirection { Horizontal, Vertical }
-
-#[derive(Debug, Clone, Copy)]
-pub enum Color {
-    PRIMARY,
-    GRAY,
-    GREEN,
-    RED,
-    BACKGROUND,
-    Custom(u32),
-}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Modifier;
@@ -37,6 +30,7 @@ pub struct Handler {
 pub enum Component {
     Text(Text),
     Button(Button),
+    Image(Image),
     Stack(Stack),
     WithHandlers {
         component: Box<Component>,
@@ -52,11 +46,15 @@ impl Component {
     pub fn text(compute: impl Fn() -> String + 'static) -> Self {
         Self::Text(Text { compute: Rc::new(compute) })
     }
-    
+
     pub fn button(label: impl Into<String>) -> Self {
         Self::Button(Button { text: label.into() })
     }
-    
+
+    pub fn image(asset: impl Into<Asset>) -> Self {
+        Self::Image(Image { asset: asset.into() })
+    }
+
     pub fn stack(direction: LayoutDirection, spacing: i32, children: Vec<Component>) -> Self {
         Self::Stack(Stack { direction, spacing, children })
     }
@@ -84,6 +82,11 @@ impl Component {
 
     pub fn font_size(self, size: i32) -> Self {
         self.style(StyleProperty(Axis::FontSize, StyleValue::Length(size as f32)))
+    }
+
+    /// Sets a custom font, loaded from an asset (e.g. `.font("fonts/Inter-Bold.ttf")`).
+    pub fn font(self, asset: impl Into<Asset>) -> Self {
+        self.style(StyleProperty(Axis::FontFamily, StyleValue::Asset(asset.into())))
     }
 
     pub fn padding(self, horizontal: i32, vertical: i32) -> Self {
@@ -117,6 +120,9 @@ impl Component {
             }
             Component::Button(btn_comp) => {
                 backend.create_button(&btn_comp.text)
+            }
+            Component::Image(img_comp) => {
+                backend.create_image(&img_comp.asset)
             }
             Component::Stack(stack_comp) => {
                 let views = stack_comp.children.iter().map(|c| c.render(backend)).collect();

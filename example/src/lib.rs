@@ -1,4 +1,4 @@
-use goyda::prelude::{page, stack, Component, Color};
+use goyda::prelude::{page, stack, Component, Color, asset};
 
 const COLOR_PRIMARY: Color = Color::Custom(0xFF3949AB);
 const COLOR_MUTED: Color = Color::GRAY;
@@ -17,9 +17,12 @@ pub fn counter_page() -> Component {
         direction: Vertical,
         spacing: 16,
 
+        image { src: asset!("logo.svg") },
+
         text { "Current: ", count }
             .color(COLOR_PRIMARY)
-            .font_size(FONT_SIZE_2XL),
+            .font_size(FONT_SIZE_2XL)
+            .font("fonts/Inter-Bold.ttf"),
 
         text { "Doubled: ", doubled }
             .color(COLOR_MUTED),

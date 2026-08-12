@@ -3,8 +3,7 @@ use jni::{
     JNIEnv, JavaVM
 };
 use crate::core::{Backend, BackendUpdater};
-use crate::components::{LayoutDirection, StyleProperty, Color, Axis, Edge, StyleValue};
-use crate::components::style::SPACING;
+use crate::components::{Asset, LayoutDirection, StyleProperty, Color, Axis, Edge, StyleValue};
 use crate::core::events::Update;
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -15,14 +14,7 @@ pub static JVM: OnceCell<JavaVM> = OnceCell::new();
 type StyleApplier = fn(&mut JNIEnv, &JObject, &StyleValue);
 
 fn map_color(color: Color) -> i32 {
-    match color {
-        Color::PRIMARY => 0xFF6200EEu32 as i32,
-        Color::GRAY => 0xFF888888u32 as i32,
-        Color::GREEN => 0xFF4CAF50u32 as i32,
-        Color::RED => 0xFFF44336u32 as i32,
-        Color::BACKGROUND => 0xFFFFFFFFu32 as i32,
-        Color::Custom(hex) => hex as i32,
-    }
+    goyda_utils::color::argb(color) as i32
 }
 
 fn resolve_color(value: &StyleValue) -> Option<i32> {
@@ -32,19 +24,17 @@ fn resolve_color(value: &StyleValue) -> Option<i32> {
     }
 }
 
+/// Android pixel-density scaling on top of the shared, unscaled length
+/// resolution in `goyda-utils`.
 fn resolve_length(value: &StyleValue) -> Option<i32> {
-    match value {
-        StyleValue::Length(v) => Some((*v * 3.0) as i32),
-        StyleValue::Spacing(scale) => {
-            let v = SPACING.get(*scale).copied();
-            if v.is_none() {
-                #[cfg(debug_assertions)]
-                eprintln!("goyda(android): spacing scale index {scale} out of range");
-            }
-            v.map(|v| (v * 3.0) as i32)
+    let v = goyda_utils::style::resolve_length(value);
+    if v.is_none() {
+        if let StyleValue::Spacing(scale) = value {
+            #[cfg(debug_assertions)]
+            eprintln!("goyda(android): spacing scale index {scale} out of range");
         }
-        _ => None,
     }
+    v.map(|v| (v * 3.0) as i32)
 }
 
 fn resolve_font_size(value: &StyleValue) -> Option<f32> {
@@ -140,7 +130,7 @@ fn apply_border_radius(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
 const DEFAULT_BORDER_COLOR: i32 = 0xFF000000u32 as i32;
 
 fn get_stroke_state(env: &mut JNIEnv, view: &JObject) -> (i32, i32) {
-    let default_width = (SPACING.get(1).copied().unwrap_or(1.0) * 3.0) as i32;
+    let default_width = (goyda_utils::style::resolve_spacing(1).unwrap_or(1.0) * 3.0) as i32;
 
     let tag = env
         .call_method(view, "getTag", "()Ljava/lang/Object;", &[])
@@ -241,6 +231,194 @@ fn apply_margin_all(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
         view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V",
         &[JValue::Object(&params)],
     ).unwrap();
+}
+
+/// Reads an asset's full content from `AssetManager` into memory. Needed
+/// (rather than handing the `InputStream` straight to `BitmapFactory`) for
+/// SVGs, which have to be rasterized in Rust before Android's raster-only
+/// `BitmapFactory` can turn them into a `Bitmap`.
+fn read_asset_bytes(env: &mut JNIEnv, context: &JObject, path: &str) -> Option<Vec<u8>> {
+    let asset_manager = env
+        .call_method(context, "getAssets", "()Landroid/content/res/AssetManager;", &[])
+        .ok()?
+        .l()
+        .ok()?;
+
+    let path_str = env.new_string(path).ok()?;
+    let input_stream = env.call_method(
+        &asset_manager,
+        "open",
+        "(Ljava/lang/String;)Ljava/io/InputStream;",
+        &[JValue::Object(&path_str)],
+    );
+
+    let input_stream = match input_stream {
+        Ok(v) => v.l().ok()?,
+        Err(_) => {
+            let _ = env.exception_clear();
+            return None;
+        }
+    };
+
+    let available = env.call_method(&input_stream, "available", "()I", &[]).ok()?.i().ok()?;
+    if available <= 0 {
+        return None;
+    }
+
+    let byte_array = env.new_byte_array(available).ok()?;
+    let read = env
+        .call_method(&input_stream, "read", "([B)I", &[JValue::Object(&byte_array)])
+        .ok()?
+        .i()
+        .ok()?;
+    if read <= 0 {
+        return None;
+    }
+
+    let _ = env.call_method(&input_stream, "close", "()V", &[]);
+
+    let mut buf = vec![0i8; read as usize];
+    env.get_byte_array_region(&byte_array, 0, &mut buf).ok()?;
+    Some(buf.into_iter().map(|b| b as u8).collect())
+}
+
+/// Rasterizes SVG source into premultiplied RGBA8 pixels, sized to the
+/// SVG's intrinsic size (rounded up to whole pixels).
+fn rasterize_svg(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
+    let tree = resvg::usvg::Tree::from_data(bytes, &resvg::usvg::Options::default()).ok()?;
+    let size = tree.size();
+    let (width, height) = (size.width().ceil() as u32, size.height().ceil() as u32);
+    if width == 0 || height == 0 {
+        return None;
+    }
+
+    let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)?;
+    resvg::render(&tree, resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+    Some((width, height, pixmap.data().to_vec()))
+}
+
+/// Builds an `ARGB_8888` `Bitmap` from premultiplied RGBA8 pixel bytes (the
+/// format both `tiny_skia::Pixmap` and Android's `Bitmap.copyPixelsFromBuffer`
+/// use, so the buffer copies straight across with no per-pixel conversion).
+fn create_bitmap_from_rgba<'a>(env: &mut JNIEnv<'a>, width: u32, height: u32, rgba: &[u8]) -> Option<JObject<'a>> {
+    let config_class = env.find_class("android/graphics/Bitmap$Config").ok()?;
+    let argb_8888 = env
+        .get_static_field(config_class, "ARGB_8888", "Landroid/graphics/Bitmap$Config;")
+        .ok()?
+        .l()
+        .ok()?;
+
+    let bitmap_class = env.find_class("android/graphics/Bitmap").ok()?;
+    let bitmap = env
+        .call_static_method(
+            bitmap_class,
+            "createBitmap",
+            "(IILandroid/graphics/Bitmap$Config;)Landroid/graphics/Bitmap;",
+            &[JValue::Int(width as i32), JValue::Int(height as i32), JValue::Object(&argb_8888)],
+        )
+        .ok()?
+        .l()
+        .ok()?;
+
+    let byte_array = env.byte_array_from_slice(rgba).ok()?;
+    let buffer_class = env.find_class("java/nio/ByteBuffer").ok()?;
+    let buffer = env
+        .call_static_method(buffer_class, "wrap", "([B)Ljava/nio/ByteBuffer;", &[JValue::Object(&byte_array)])
+        .ok()?
+        .l()
+        .ok()?;
+
+    env.call_method(&bitmap, "copyPixelsFromBuffer", "(Ljava/nio/Buffer;)V", &[JValue::Object(&buffer)])
+        .ok()?;
+
+    Some(bitmap)
+}
+
+/// Decodes `bytes` into a `Bitmap` - rasterizing first if `asset` is an SVG
+/// (which `BitmapFactory` can't decode natively), otherwise handing the raw
+/// bytes straight to `BitmapFactory.decodeByteArray`.
+fn decode_bitmap_bytes<'a>(env: &mut JNIEnv<'a>, asset: &Asset, bytes: &[u8]) -> Option<JObject<'a>> {
+    if goyda_utils::asset::is_svg(asset) {
+        let (width, height, rgba) = rasterize_svg(bytes)?;
+        return create_bitmap_from_rgba(env, width, height, &rgba);
+    }
+
+    let array = env.byte_array_from_slice(bytes).ok()?;
+    let bitmap_factory_class = env.find_class("android/graphics/BitmapFactory").ok()?;
+    env.call_static_method(
+        bitmap_factory_class,
+        "decodeByteArray",
+        "([BII)Landroid/graphics/Bitmap;",
+        &[JValue::Object(&array), JValue::Int(0), JValue::Int(bytes.len() as i32)],
+    )
+    .ok()?
+    .l()
+    .ok()
+}
+
+fn load_asset_bitmap<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, asset: &Asset) -> Option<JObject<'a>> {
+    let bytes = read_asset_bytes(env, context, asset.path())?;
+    decode_bitmap_bytes(env, asset, &bytes)
+}
+
+/// Builds a `Typeface` straight from embedded bytes via `Typeface.Builder`
+/// (API 26+) - no `AssetManager` lookup needed since the content already
+/// lives in the binary.
+fn build_typeface_bytes<'a>(env: &mut JNIEnv<'a>, bytes: &[u8]) -> Option<JObject<'a>> {
+    let array = env.byte_array_from_slice(bytes).ok()?;
+    let builder = env
+        .new_object("android/graphics/Typeface$Builder", "([B)V", &[JValue::Object(&array)])
+        .ok()?;
+    env.call_method(&builder, "build", "()Landroid/graphics/Typeface;", &[])
+        .ok()?
+        .l()
+        .ok()
+}
+
+/// `Axis::FontFamily` isn't a [`StyleApplier`] in [`STYLE_REGISTRY`] because
+/// loading a font asset needs [`AndroidBackend::context`] (for
+/// `AssetManager`), which that registry's function pointers don't carry -
+/// `apply_style` special-cases it instead, where `self.context` is in scope.
+fn apply_font_family<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, view: &JObject<'a>, asset: &Asset) {
+    let typeface = if let Some(bytes) = asset.bytes() {
+        build_typeface_bytes(env, bytes)
+    } else {
+        load_asset_typeface(env, context, asset.path())
+    };
+
+    let Some(typeface) = typeface else {
+        #[cfg(debug_assertions)]
+        eprintln!("goyda(android): font asset not found: {}", asset.path());
+        return;
+    };
+
+    let _ = env.call_method(view, "setTypeface", "(Landroid/graphics/Typeface;)V", &[JValue::Object(&typeface)]);
+}
+
+fn load_asset_typeface<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, path: &str) -> Option<JObject<'a>> {
+    let asset_manager = env
+        .call_method(context, "getAssets", "()Landroid/content/res/AssetManager;", &[])
+        .ok()?
+        .l()
+        .ok()?;
+
+    let path_str = env.new_string(path).ok()?;
+    let typeface_class = env.find_class("android/graphics/Typeface").ok()?;
+
+    let typeface = env.call_static_method(
+        typeface_class,
+        "createFromAsset",
+        "(Landroid/content/res/AssetManager;Ljava/lang/String;)Landroid/graphics/Typeface;",
+        &[JValue::Object(&asset_manager), JValue::Object(&path_str)],
+    );
+
+    match typeface.and_then(|v| v.l()) {
+        Ok(t) => Some(t),
+        Err(_) => {
+            let _ = env.exception_clear();
+            None
+        }
+    }
 }
 
 fn build_style_registry() -> HashMap<Axis, StyleApplier> {
@@ -355,6 +533,32 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
         AndroidView { global_ref: Arc::new(self.env.new_global_ref(button_view).unwrap()) }
     }
 
+    fn create_image(&mut self, asset: &Asset) -> Self::PlatformView {
+        let image_view = self.env
+            .new_object("android/widget/ImageView", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+
+        let bitmap = match asset.bytes() {
+            Some(bytes) => decode_bitmap_bytes(self.env, asset, bytes),
+            None => load_asset_bitmap(self.env, self.context, asset),
+        };
+
+        match bitmap {
+            Some(bitmap) => {
+                self.env.call_method(&image_view, "setImageBitmap", "(Landroid/graphics/Bitmap;)V", &[JValue::Object(&bitmap)]).unwrap();
+            }
+            None => {
+                #[cfg(debug_assertions)]
+                eprintln!("goyda(android): image asset not found: {}", asset.path());
+            }
+        }
+
+        let layout_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(-2), JValue::Int(-2)]).unwrap();
+        self.env.call_method(&image_view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
+
+        AndroidView { global_ref: Arc::new(self.env.new_global_ref(image_view).unwrap()) }
+    }
+
     fn create_stack(&mut self, direction: LayoutDirection, spacing: i32, children: Vec<Self::PlatformView>) -> Self::PlatformView {
         let layout = self.env
             .new_object("android/widget/LinearLayout", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
@@ -410,6 +614,13 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
     fn apply_style(&mut self, view: &Self::PlatformView, style: StyleProperty) {
         let local_view = self.env.new_local_ref(view.global_ref.as_obj()).unwrap();
         let StyleProperty(axis, value) = style;
+
+        if axis == Axis::FontFamily {
+            if let StyleValue::Asset(asset) = &value {
+                apply_font_family(self.env, self.context, &local_view, asset);
+            }
+            return;
+        }
 
         match STYLE_REGISTRY.get(&axis) {
             Some(applier) => applier(&mut *self.env, &local_view, &value),

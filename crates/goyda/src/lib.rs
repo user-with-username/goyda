@@ -22,8 +22,8 @@ pub use crate::macros::IntoString;
 
 pub mod prelude {
     pub use goyda_derive::page;
-    pub use crate::{stack, parse_children};
-    pub use crate::components::{Component, LayoutDirection, Color, Modifier};
+    pub use crate::{stack, parse_children, asset, asset_ref};
+    pub use crate::components::{Component, LayoutDirection, Color, Modifier, Asset};
     pub use crate::reactive::{Signal, Memo};
 }
 

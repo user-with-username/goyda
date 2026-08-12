@@ -89,9 +89,9 @@ pub fn build_apk_package(layout: &AndroidAppLayout, env: &BuildEnvironment) -> R
 
     let dex_path = build_dir.join("classes.dex");
     let lib_dir = layout.app_dir().join("lib");
-    
-    repack_apk_with_dex_and_libs(&apk_path, &dex_path, &lib_dir)
-        .context("Failed to pack dex and native libraries into the APK")?;
+
+    repack_apk_with_dex_and_libs(&apk_path, &dex_path, &lib_dir, layout.assets_dir())
+        .context("Failed to pack dex, native libraries and assets into the APK")?;
 
     run_command(
         Command::new(&zipalign_path).args(&[
@@ -132,6 +132,7 @@ fn repack_apk_with_dex_and_libs(
     apk_path: &Path,
     dex_path: &Path,
     lib_dir: &Path,
+    assets_dir: &Path,
 ) -> Result<()> {
     let temp_apk_path = apk_path.with_extension("tmp.apk");
 
@@ -158,6 +159,10 @@ fn repack_apk_with_dex_and_libs(
 
     if lib_dir.exists() && lib_dir.is_dir() {
         add_dir_to_zip(&mut zip, lib_dir, lib_dir, "lib")?;
+    }
+
+    if assets_dir.exists() && assets_dir.is_dir() {
+        add_dir_to_zip(&mut zip, assets_dir, assets_dir, "assets")?;
     }
 
     zip.finish()?;

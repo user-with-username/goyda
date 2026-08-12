@@ -4,6 +4,7 @@ use std::process::Command;
 
 use super::AndroidAppLayout;
 use crate::targets::BuildContext;
+use crate::utils::run_command_quiet;
 
 fn is_windows_host() -> bool {
     cfg!(windows)
@@ -21,25 +22,6 @@ fn check_cargo_ndk() -> Result<()> {
              - Windows: cargo build --target <triple> ..."
         ),
     }
-}
-
-fn run_cargo_quiet(mut cmd: Command, context_msg: &str) -> Result<()> {
-    let output = cmd
-        .output()
-        .with_context(|| format!("{context_msg}: failed to spawn process"))?;
-
-    if !output.status.success() {
-        let stderr = String::from_utf8_lossy(&output.stderr);
-        let stdout = String::from_utf8_lossy(&output.stdout);
-        let log = if !stderr.trim().is_empty() {
-            stderr.into_owned()
-        } else {
-            stdout.into_owned()
-        };
-        bail!("{context_msg}\n\n{}", log.trim_end());
-    }
-
-    Ok(())
 }
 
 pub fn build_native_library(ctx: &BuildContext) -> Result<()> {
@@ -61,7 +43,7 @@ pub fn build_native_library(ctx: &BuildContext) -> Result<()> {
             ])
             .env("CARGO_NDK_ANDROID_PLATFORM", "21");
 
-        run_cargo_quiet(cmd, "building the Rust library via cargo-ndk failed")
+        run_command_quiet(&mut cmd, "building the Rust library via cargo-ndk failed")
     } else {
         let mut cmd = Command::new("cargo");
         cmd.current_dir(&ctx.manifest_dir).args(&[
@@ -73,7 +55,7 @@ pub fn build_native_library(ctx: &BuildContext) -> Result<()> {
             "goyda/android",
         ]);
 
-        run_cargo_quiet(cmd, "building the Rust library via cargo build failed")
+        run_command_quiet(&mut cmd, "building the Rust library via cargo build failed")
     }
 }
 

@@ -7,6 +7,7 @@ pub struct AndroidAppLayout {
     app_dir: PathBuf,
     classes_dir: PathBuf,
     jni_libs_dir: PathBuf,
+    assets_dir: PathBuf,
     manifest: PathBuf,
     java_src_dir: PathBuf,
     gen_apk: PathBuf,
@@ -40,6 +41,7 @@ impl AndroidAppLayout {
         Ok(Self {
             classes_dir: build_dir.join("classes"),
             jni_libs_dir: app_dir.join("lib").join(abi),
+            assets_dir: app_dir.join("assets"),
             manifest: app_dir.join("AndroidManifest.xml"),
             gen_apk: build_dir.join("app.apk"),
             aligned_apk: build_dir.join("app-aligned.apk"),
@@ -66,6 +68,9 @@ impl AndroidAppLayout {
     }
     pub fn jni_libs_dir(&self) -> &Path {
         &self.jni_libs_dir
+    }
+    pub fn assets_dir(&self) -> &Path {
+        &self.assets_dir
     }
     pub fn manifest(&self) -> &Path {
         &self.manifest

@@ -39,11 +39,22 @@ impl PlatformTarget for AndroidTarget {
     fn build(&self, ctx: &BuildContext) -> Result<PathBuf> {
         term::header("UI", &[&ctx.target_triple]);
 
-        let env = BuildEnvironment::prepare()?;
+        let s = term::spinner_step("dev toolchain");
+        let env = match BuildEnvironment::prepare() {
+            Ok(env) => {
+                s.ok();
+                env
+            }
+            Err(e) => {
+                s.fail(&e.to_string());
+                return Err(e);
+            }
+        };
+
         let layout = AndroidAppLayout::new(&ctx.manifest_dir, &ctx.target_triple, &ctx.crate_name)?;
         layout.init_directories()?;
 
-        let s = term::spinner_step("native library");
+        let s = term::spinner_step("rust -> android");
         let result = native::build_native_library(ctx).and_then(|_| native::copy_native_library(ctx, &layout));
         match result {
             Ok(()) => s.ok(),
@@ -56,6 +67,11 @@ impl PlatformTarget for AndroidTarget {
         let s = term::step("layout & assets");
         templates::generate_assets_from_templates(&layout, &ctx.crate_name, &ctx.lib_name)?;
         listeners::write_runtime_listener_classes(&layout)?;
+        s.ok();
+
+        let s = term::step("project assets");
+        crate::utils::copy_dir_recursive(&ctx.manifest_dir.join("assets"), layout.assets_dir())
+            .context("Failed to copy the assets/ directory into the APK")?;
         s.ok();
 
         let s = term::spinner_step("package apk");

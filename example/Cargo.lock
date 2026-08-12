@@ -67,6 +67,7 @@ version = "0.1.0"
 dependencies = [
  "goyda-derive",
  "goyda-macros",
+ "goyda-utils",
  "inventory",
  "once_cell",
  "paste",
@@ -85,6 +86,10 @@ dependencies = [
 
 [[package]]
 name = "goyda-macros"
+version = "0.1.0"
+
+[[package]]
+name = "goyda-utils"
 version = "0.1.0"
 
 [[package]]

@@ -30,6 +30,52 @@ pub fn run_command(command: &mut Command, error_msg: &'static str) -> Result<()>
     Ok(())
 }
 
+/// Like [`run_command`], but captures the child's output instead of
+/// streaming it live - only printed (as part of the error) if the command
+/// fails. Used for `cargo build` invocations so a spinner step can own the
+/// line instead of cargo's own progress output interleaving with it.
+pub fn run_command_quiet(command: &mut Command, error_msg: &str) -> Result<()> {
+    let output = command
+        .output()
+        .with_context(|| format!("{error_msg}: failed to spawn process"))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        let stdout = String::from_utf8_lossy(&output.stdout);
+        let log = if !stderr.trim().is_empty() { stderr.into_owned() } else { stdout.into_owned() };
+        anyhow::bail!("{error_msg}\n\n{}", log.trim_end());
+    }
+
+    Ok(())
+}
+
+/// Copies `src`'s contents into `dst` (created if missing), recursing into
+/// subdirectories. Used to stage a project's `assets/` directory into each
+/// platform's build output - a no-op (`Ok(())`) if `src` doesn't exist.
+pub fn copy_dir_recursive(src: &Path, dst: &Path) -> Result<()> {
+    if !src.exists() {
+        return Ok(());
+    }
+
+    fs::create_dir_all(dst)
+        .with_context(|| format!("Failed to create directory {:?}", dst))?;
+
+    for entry in fs::read_dir(src).with_context(|| format!("Failed to read directory {:?}", src))? {
+        let entry = entry?;
+        let src_path = entry.path();
+        let dst_path = dst.join(entry.file_name());
+
+        if src_path.is_dir() {
+            copy_dir_recursive(&src_path, &dst_path)?;
+        } else {
+            fs::copy(&src_path, &dst_path)
+                .with_context(|| format!("Failed to copy {:?} to {:?}", src_path, dst_path))?;
+        }
+    }
+
+    Ok(())
+}
+
 pub fn collect_classes(dir: &Path) -> Result<Vec<String>> {
     let mut files = Vec::new();
     collect_classes_rec(dir, &mut files)?;

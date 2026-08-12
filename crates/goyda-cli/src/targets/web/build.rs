@@ -5,7 +5,7 @@ use std::process::Command;
 
 use crate::targets::BuildContext;
 use crate::term;
-use crate::utils::run_command;
+use crate::utils::{copy_dir_recursive, run_command_quiet};
 
 use super::env::WebBuildEnvironment;
 use super::layout::WebAppLayout;
@@ -31,7 +31,7 @@ pub fn build_web_app(ctx: &BuildContext) -> Result<PathBuf> {
         }
     };
 
-    let s = term::spinner_step("rust -> wasm32");
+    let s = term::spinner_step("native library");
     let compiled = compile_to_wasm(ctx);
     match &compiled {
         Ok(()) => s.ok(),
@@ -49,7 +49,7 @@ pub fn build_web_app(ctx: &BuildContext) -> Result<PathBuf> {
         anyhow::bail!("Compiled wasm module not found at: {:?}", wasm_path);
     }
 
-    let s = term::spinner_step("wasm-bindgen");
+    let s = term::spinner_step("generate bindings");
     let bound = run_wasm_bindgen(&env.wasm_bindgen_bin, &wasm_path, layout.dist_dir(), &ctx.lib_name);
     match &bound {
         Ok(()) => s.ok(),
@@ -57,8 +57,13 @@ pub fn build_web_app(ctx: &BuildContext) -> Result<PathBuf> {
     }
     bound?;
 
-    let s = term::step("index.html");
+    let s = term::step("layout & assets");
     write_index_html(&layout, &ctx.crate_name, &ctx.lib_name)?;
+    s.ok();
+
+    let s = term::step("project assets");
+    copy_dir_recursive(&ctx.manifest_dir.join("assets"), &layout.dist_dir().join("assets"))
+        .context("Failed to copy the assets/ directory into the web build")?;
     s.ok();
 
     Ok(layout.dist_dir().to_path_buf())
@@ -102,7 +107,7 @@ fn compile_to_wasm(ctx: &BuildContext) -> Result<()> {
         "goyda/web",
     ]);
 
-    run_command(&mut cmd, "building the Rust library for wasm32 via cargo build failed")
+    run_command_quiet(&mut cmd, "building the Rust library for wasm32 via cargo build failed")
 }
 
 fn write_index_html(layout: &WebAppLayout, app_name: &str, out_name: &str) -> Result<()> {
