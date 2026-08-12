@@ -39,6 +39,27 @@ define_listener! {
             }
         ]
     },
+
+    windows {
+        custom = |_backend, view, callback| {
+            use std::cell::Cell;
+            use std::rc::Rc;
+            use windows_sys::Win32::UI::WindowsAndMessaging::{WM_LBUTTONDOWN, WM_LBUTTONUP};
+
+            let pressed = Rc::new(Cell::new(false));
+            crate::windows::register_raw_hook(view.hwnd, Rc::new(move |msg, _wparam, _lparam| {
+                match msg {
+                    WM_LBUTTONDOWN => pressed.set(true),
+                    WM_LBUTTONUP => {
+                        if pressed.replace(false) {
+                            callback(Event::Click);
+                        }
+                    }
+                    _ => {}
+                }
+            }));
+        }
+    },
 }
 
 define_listener! {
@@ -114,6 +135,34 @@ define_listener! {
             cancel_closure.forget();
         }
     },
+
+    windows {
+        custom = |_backend, view, callback| {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{
+                KillTimer, SetTimer, WM_LBUTTONDOWN, WM_LBUTTONUP, WM_TIMER,
+            };
+
+            const LONG_PRESS_MS: u32 = 500;
+            const TIMER_ID: usize = 0xC0FFEE;
+
+            let hwnd = view.hwnd;
+            crate::windows::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, wparam, _lparam| unsafe {
+                match msg {
+                    WM_LBUTTONDOWN => {
+                        SetTimer(hwnd, TIMER_ID, LONG_PRESS_MS, None);
+                    }
+                    WM_LBUTTONUP => {
+                        KillTimer(hwnd, TIMER_ID);
+                    }
+                    WM_TIMER if wparam == TIMER_ID => {
+                        KillTimer(hwnd, TIMER_ID);
+                        callback(Event::LongClick);
+                    }
+                    _ => {}
+                }
+            }));
+        }
+    },
 }
 
 define_listener! {
@@ -151,6 +200,27 @@ define_listener! {
                 }
             }
         ]
+    },
+
+    // No native checkbox widget exists in this backend (see
+    // `windows/state.rs`'s `ControlKind`) - like the android/web arms above
+    // (which wire this to whatever control a `button { .. on_checked_change:
+    // .. }` happens to be attached to), this just toggles a per-control bool
+    // on every click.
+    windows {
+        custom = |_backend, view, callback| {
+            use std::cell::Cell;
+            use windows_sys::Win32::UI::WindowsAndMessaging::WM_LBUTTONUP;
+
+            let checked = std::rc::Rc::new(Cell::new(false));
+            crate::windows::register_raw_hook(view.hwnd, std::rc::Rc::new(move |msg, _wparam, _lparam| {
+                if msg == WM_LBUTTONUP {
+                    let now = !checked.get();
+                    checked.set(now);
+                    callback(Event::CheckedChanged(now));
+                }
+            }));
+        }
     },
 }
 
@@ -190,6 +260,26 @@ define_listener! {
                 }
             }
         ]
+    },
+
+    // `WM_SETFOCUS`/`WM_KILLFOCUS` are sent straight to the control that
+    // gained/lost focus, same as android's `OnFocusChangeListener` and the
+    // web `focus`/`blur` events above - they only fire for controls that
+    // actually receive keyboard focus, which nothing in this backend
+    // requests automatically (see `windows/backend.rs`), same caveat as the
+    // other two platforms' arms above.
+    windows {
+        custom = |_backend, view, callback| {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{WM_KILLFOCUS, WM_SETFOCUS};
+
+            crate::windows::register_raw_hook(view.hwnd, std::rc::Rc::new(move |msg, _wparam, _lparam| {
+                match msg {
+                    WM_SETFOCUS => callback(Event::FocusChanged(true)),
+                    WM_KILLFOCUS => callback(Event::FocusChanged(false)),
+                    _ => {}
+                }
+            }));
+        }
     },
 }
 
@@ -258,5 +348,31 @@ define_listener! {
                 }
             }
         ]
+    },
+
+    // No editable text control exists in this backend yet (see
+    // `windows/state.rs`'s `ControlKind`), so this accumulates `WM_CHAR`
+    // straight onto whatever control it's attached to via a per-`HWND`
+    // buffer (`windows::append_text_buffer`) - same approximation the web
+    // arm above already accepts (`start`/`before` always 0, `count` is the
+    // buffer's new length, not the edit size).
+    windows {
+        custom = |_backend, view, callback| {
+            use windows_sys::Win32::UI::WindowsAndMessaging::WM_CHAR;
+
+            let hwnd = view.hwnd;
+            crate::windows::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, wparam, _lparam| {
+                if msg != WM_CHAR {
+                    return;
+                }
+                let Some(ch) = char::from_u32(wparam as u32) else { return };
+                if ch.is_control() {
+                    return;
+                }
+                let text = crate::windows::append_text_buffer(hwnd, ch);
+                let count = text.chars().count();
+                callback(Event::TextChanged { text, start: 0, before: 0, count });
+            }));
+        }
     },
 }

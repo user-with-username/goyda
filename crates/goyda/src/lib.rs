@@ -15,6 +15,8 @@ pub mod reactive;
 pub mod android;
 #[cfg(feature = "web")]
 pub mod web;
+#[cfg(feature = "windows")]
+pub mod windows;
 
 pub use crate::components::{Component, LayoutDirection, Color, Modifier};
 pub use crate::components::{Axis, Edge, StyleValue, StyleProperty};

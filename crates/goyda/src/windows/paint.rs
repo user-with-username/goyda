@@ -1,0 +1,139 @@
+use windows_sys::Win32::Foundation::{COLORREF, HWND, RECT};
+use windows_sys::Win32::Graphics::Gdi::*;
+use windows_sys::Win32::UI::WindowsAndMessaging::GetParent;
+
+use super::state::{client_rect, with_state, ControlKind};
+
+/// The color that would show through if `hwnd` had no background of its
+/// own - the nearest ancestor's `background_color`, or plain white if none
+/// of them set one either.
+fn ancestor_background(hwnd: HWND) -> COLORREF {
+    let mut current = unsafe { GetParent(hwnd) };
+    while !current.is_null() {
+        if let Some(bg) = with_state(current, |s| s.background_color).flatten() {
+            return bg;
+        }
+        current = unsafe { GetParent(current) };
+    }
+    0x00FF_FFFF
+}
+
+pub fn paint_control(hwnd: HWND, hdc: HDC) {
+    let rect = client_rect(hwnd);
+
+    // `WM_ERASEBKGND` is suppressed entirely (see `state::wndproc`) to avoid
+    // flicker, which means this is the *only* place a control's background
+    // ever gets cleared - without it, redrawing new content (e.g. a
+    // `Signal`-driven text update) would draw right on top of whatever was
+    // there before instead of replacing it.
+    let base = with_state(hwnd, |s| s.background_color).flatten().unwrap_or_else(|| ancestor_background(hwnd));
+    unsafe {
+        let base_brush = CreateSolidBrush(base);
+        FillRect(hdc, &rect, base_brush);
+        DeleteObject(base_brush);
+    }
+
+    with_state(hwnd, |state| unsafe {
+        // Shadow: a soft approximation - an offset, slightly larger filled
+        // rect drawn first, in the same border color if set (else a plain
+        // gray), so it peeks out from behind the control.
+        if state.shadow > 0 {
+            let color = state.border_color.unwrap_or(0x00C8_C8C8);
+            let brush = CreateSolidBrush(color);
+            let shadow_rect =
+                RECT { left: rect.left + state.shadow, top: rect.top + state.shadow, right: rect.right + state.shadow, bottom: rect.bottom + state.shadow };
+            FillRect(hdc, &shadow_rect, brush);
+            DeleteObject(brush);
+        }
+
+        if let Some(bg) = state.background_color {
+            let brush = CreateSolidBrush(bg);
+            if state.border_radius > 0 {
+                let pen = CreatePen(PS_NULL as i32, 0, 0);
+                let old_pen = SelectObject(hdc, pen);
+                let old_brush = SelectObject(hdc, brush);
+                RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, state.border_radius * 2, state.border_radius * 2);
+                SelectObject(hdc, old_pen);
+                SelectObject(hdc, old_brush);
+                DeleteObject(pen);
+            } else {
+                FillRect(hdc, &rect, brush);
+            }
+            DeleteObject(brush);
+        }
+
+        if state.border_width > 0 {
+            if let Some(border) = state.border_color {
+                let pen = CreatePen(PS_SOLID as i32, state.border_width, border);
+                let old_pen = SelectObject(hdc, pen);
+                let old_brush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
+                if state.border_radius > 0 {
+                    RoundRect(hdc, rect.left, rect.top, rect.right, rect.bottom, state.border_radius * 2, state.border_radius * 2);
+                } else {
+                    Rectangle(hdc, rect.left, rect.top, rect.right, rect.bottom);
+                }
+                SelectObject(hdc, old_pen);
+                SelectObject(hdc, old_brush);
+                DeleteObject(pen);
+            }
+        }
+
+        let content_rect = RECT {
+            left: rect.left + state.padding.left,
+            top: rect.top + state.padding.top,
+            right: rect.right - state.padding.right,
+            bottom: rect.bottom - state.padding.bottom,
+        };
+
+        match &state.kind {
+            ControlKind::Text(text) | ControlKind::Button(text) => {
+                if let Some(font) = state.font {
+                    SelectObject(hdc, font);
+                }
+                SetBkMode(hdc, TRANSPARENT as i32);
+                SetTextColor(hdc, state.text_color.unwrap_or(0x0000_0000));
+                let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
+                let mut r = content_rect;
+                DrawTextW(hdc, wide.as_ptr(), -1, &mut r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            ControlKind::Image { bitmap: Some(bmp), width, height } => {
+                let mem_dc = CreateCompatibleDC(hdc);
+                let old = SelectObject(mem_dc, *bmp as _);
+
+                let blend = BLENDFUNCTION { BlendOp: AC_SRC_OVER as u8, BlendFlags: 0, SourceConstantAlpha: 255, AlphaFormat: AC_SRC_ALPHA as u8 };
+                let ok = AlphaBlend(
+                    hdc,
+                    content_rect.left,
+                    content_rect.top,
+                    content_rect.right - content_rect.left,
+                    content_rect.bottom - content_rect.top,
+                    mem_dc,
+                    0,
+                    0,
+                    *width,
+                    *height,
+                    blend,
+                );
+                if ok == 0 {
+                    StretchBlt(
+                        hdc,
+                        content_rect.left,
+                        content_rect.top,
+                        content_rect.right - content_rect.left,
+                        content_rect.bottom - content_rect.top,
+                        mem_dc,
+                        0,
+                        0,
+                        *width,
+                        *height,
+                        SRCCOPY,
+                    );
+                }
+
+                SelectObject(mem_dc, old);
+                DeleteDC(mem_dc);
+            }
+            ControlKind::Image { bitmap: None, .. } | ControlKind::Panel { .. } => {}
+        }
+    });
+}

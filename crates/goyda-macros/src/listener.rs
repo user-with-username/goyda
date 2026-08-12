@@ -1,16 +1,17 @@
 /// Defines a `goyda::platform::active_listeners::on_<name>` module with one
 /// implementation per platform, selected at compile time via the `android`
-/// / `web` crate features on `goyda`.
+/// / `web` / `windows` crate features on `goyda`.
 ///
-/// Every invocation must supply *both* an `android { ... }` spec (JNI
-/// listener class + native methods, exactly like before) and a `web { ... }`
-/// spec (DOM event wiring) - the macro is the only thing that knows how to
-/// turn either spec into an `attach(backend, view, callback)` function, so
-/// callers only ever provide the event name, the callback type, and
-/// per-platform wiring details (which DOM event(s) fire it, which JNI
-/// class/methods back it). Both expansions land in a module with the same
-/// name (`on_<mod_name>`), each gated behind its own `#[cfg(feature = ...)]`,
-/// so `$crate::platform::active_listeners::on_click::attach` resolves
+/// Every invocation must supply an `android { ... }` spec (JNI listener
+/// class + native methods, exactly like before), a `web { ... }` spec (DOM
+/// event wiring), and a `windows { ... }` spec (raw `WM_*` message wiring -
+/// see [`crate::__define_windows_listener`]) - the macro is the only thing
+/// that knows how to turn any of the three into an
+/// `attach(backend, view, callback)` function, so callers only ever provide
+/// the event name, the callback type, and per-platform wiring details. All
+/// three expansions land in a module with the same name (`on_<mod_name>`),
+/// each gated behind its own `#[cfg(feature = ...)]`, so
+/// `$crate::platform::active_listeners::on_click::attach` resolves
 /// regardless of which platform is active.
 #[macro_export]
 macro_rules! define_listener {
@@ -18,7 +19,8 @@ macro_rules! define_listener {
         mod_name = $mod_name:ident,
         callback = $callback_ty:ty,
         android $android_spec:tt,
-        web $web_spec:tt $(,)?
+        web $web_spec:tt,
+        windows $windows_spec:tt $(,)?
     ) => {
         $crate::__define_android_listener! {
             mod_name = $mod_name,
@@ -29,6 +31,11 @@ macro_rules! define_listener {
             mod_name = $mod_name,
             callback = $callback_ty,
             spec = $web_spec,
+        }
+        $crate::__define_windows_listener! {
+            mod_name = $mod_name,
+            callback = $callback_ty,
+            spec = $windows_spec,
         }
     };
 }
@@ -231,6 +238,48 @@ macro_rules! __define_web_listener {
                 pub unsafe fn attach(
                     $backend_ident: &mut WebBackend,
                     $view_ident: &WebView,
+                    $callback_ident: ::std::rc::Rc<$callback_ty>,
+                ) $custom_body
+            }
+        }
+    };
+}
+
+/// Not public API. The `windows { ... }` half of [`define_listener`].
+///
+/// Win32 has no single "DOM event name" abstraction to hang a declarative
+/// list off of - every event is some combination of raw `WM_*` messages
+/// (`WM_LBUTTONDOWN`/`UP` for clicks, `WM_SETFOCUS`/`KILLFOCUS` for focus,
+/// `WM_CHAR` for typed text, a `SetTimer` for long-press, ...), so unlike
+/// the web half this only has one shape: a `custom` block that registers
+/// one or more raw message hooks via
+/// [`crate::windows::register_raw_hook`](crate::windows::register_raw_hook)
+/// (every message sent to that control's `HWND` runs the hook, mirroring
+/// how the web half gets raw `web_sys` events and the android half gets raw
+/// JNI callbacks - each platform's spec works with whatever "raw event"
+/// shape that platform actually has).
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __define_windows_listener {
+    (
+        mod_name = $mod_name:ident,
+        callback = $callback_ty:ty,
+        spec = {
+            custom = |$backend_ident:ident, $view_ident:ident, $callback_ident:ident| $custom_body:block
+        } $(,)?
+    ) => {
+        ::paste::paste! {
+            #[cfg(feature = "windows")]
+            pub mod [<on_ $mod_name>] {
+                #![allow(dead_code)]
+
+                #[allow(unused_imports)]
+                use crate::core::events::*;
+                use crate::windows::backend::{WindowsBackend, WindowsView};
+
+                pub unsafe fn attach(
+                    $backend_ident: &mut WindowsBackend,
+                    $view_ident: &WindowsView,
                     $callback_ident: ::std::rc::Rc<$callback_ty>,
                 ) $custom_body
             }
