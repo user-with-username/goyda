@@ -13,9 +13,10 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Cmd {
+    /// Build the project. Without a platform, builds all implemented platforms.
     Compile {
-        #[arg(long, default_value = "android", value_parser = parse_platform)]
-        platform: Platform,
+        #[arg(value_parser = parse_platform)]
+        platform: Option<Platform>,
 
         #[arg(long)]
         target: Option<String>,
@@ -24,8 +25,9 @@ pub enum Cmd {
         manifest_dir: PathBuf,
     },
 
+    /// Build and run the project for a platform.
     Run {
-        #[arg(long, default_value = "android", value_parser = parse_platform)]
+        #[arg(value_parser = parse_platform)]
         platform: Platform,
 
         #[arg(long)]

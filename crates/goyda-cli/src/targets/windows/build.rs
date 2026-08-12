@@ -14,20 +14,14 @@ pub fn build_windows_app(ctx: &BuildContext) -> Result<PathBuf> {
     let layout = WindowsAppLayout::new(&ctx.manifest_dir, &ctx.crate_name);
     layout.init_directories()?;
 
-    let s = term::spinner_step("dev toolchain");
-    let toolchain = ensure_target_installed(&ctx.target_triple);
-    match &toolchain {
-        Ok(()) => s.ok(),
-        Err(e) => s.fail(&e.to_string()),
-    }
-    toolchain?;
+    ensure_target_installed(&ctx.target_triple)?;
 
     let s = term::step("layout & assets");
     let goyda_dir = resolve_goyda_manifest_dir(ctx)?;
     write_runner_crate(&layout, ctx, &goyda_dir)?;
     s.ok();
 
-    let s = term::spinner_step("rust -> windows");
+    let s = term::spinner_step("native library");
     let compiled = compile_runner(&layout, ctx);
     match &compiled {
         Ok(()) => s.ok(),
@@ -40,17 +34,13 @@ pub fn build_windows_app(ctx: &BuildContext) -> Result<PathBuf> {
         .context("Failed to copy the assets/ directory into the windows build")?;
     s.ok();
 
-    let built_exe = layout
-        .runner_dir()
-        .join("target")
-        .join(&ctx.target_triple)
-        .join("debug")
-        .join(format!("{}.exe", ctx.crate_name));
-
-    if !built_exe.exists() {
-        anyhow::bail!("Compiled executable not found at: {:?}", built_exe);
+    let s = term::spinner_step("package exe");
+    let packaged = package_exe(&layout, ctx);
+    match &packaged {
+        Ok(()) => s.ok(),
+        Err(e) => s.fail(&e.to_string()),
     }
-    fs::copy(&built_exe, layout.final_exe()).context("Failed to copy the built .exe into the windows build output")?;
+    packaged?;
 
     Ok(layout.final_exe().to_path_buf())
 }
@@ -166,4 +156,19 @@ fn compile_runner(layout: &WindowsAppLayout, ctx: &BuildContext) -> Result<()> {
     let mut cmd = Command::new("cargo");
     cmd.current_dir(layout.runner_dir()).args(&["build", "--target", &ctx.target_triple]);
     run_command_quiet(&mut cmd, "building the windows executable via cargo build failed")
+}
+
+fn package_exe(layout: &WindowsAppLayout, ctx: &BuildContext) -> Result<()> {
+    let built_exe = layout
+        .runner_dir()
+        .join("target")
+        .join(&ctx.target_triple)
+        .join("debug")
+        .join(format!("{}.exe", ctx.crate_name));
+
+    if !built_exe.exists() {
+        anyhow::bail!("Compiled executable not found at: {:?}", built_exe);
+    }
+    fs::copy(&built_exe, layout.final_exe()).context("Failed to copy the built .exe into the windows build output")?;
+    Ok(())
 }

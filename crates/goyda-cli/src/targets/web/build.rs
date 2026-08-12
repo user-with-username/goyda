@@ -18,18 +18,7 @@ pub fn build_web_app(ctx: &BuildContext) -> Result<PathBuf> {
     layout.init_directories()?;
 
     let wasm_bindgen_version = resolve_wasm_bindgen_version(ctx)?;
-
-    let s = term::spinner_step("dev toolchain");
-    let env = match WebBuildEnvironment::prepare(&wasm_bindgen_version) {
-        Ok(env) => {
-            s.ok();
-            env
-        }
-        Err(e) => {
-            s.fail(&e.to_string());
-            return Err(e);
-        }
-    };
+    let env = WebBuildEnvironment::prepare(&wasm_bindgen_version)?;
 
     let s = term::spinner_step("native library");
     let compiled = compile_to_wasm(ctx);
@@ -49,14 +38,6 @@ pub fn build_web_app(ctx: &BuildContext) -> Result<PathBuf> {
         anyhow::bail!("Compiled wasm module not found at: {:?}", wasm_path);
     }
 
-    let s = term::spinner_step("generate bindings");
-    let bound = run_wasm_bindgen(&env.wasm_bindgen_bin, &wasm_path, layout.dist_dir(), &ctx.lib_name);
-    match &bound {
-        Ok(()) => s.ok(),
-        Err(e) => s.fail(&e.to_string()),
-    }
-    bound?;
-
     let s = term::step("layout & assets");
     write_index_html(&layout, &ctx.crate_name, &ctx.lib_name)?;
     s.ok();
@@ -65,6 +46,14 @@ pub fn build_web_app(ctx: &BuildContext) -> Result<PathBuf> {
     copy_dir_recursive(&ctx.manifest_dir.join("assets"), &layout.dist_dir().join("assets"))
         .context("Failed to copy the assets/ directory into the web build")?;
     s.ok();
+
+    let s = term::spinner_step("package wasm");
+    let bound = run_wasm_bindgen(&env.wasm_bindgen_bin, &wasm_path, layout.dist_dir(), &ctx.lib_name);
+    match &bound {
+        Ok(()) => s.ok(),
+        Err(e) => s.fail(&e.to_string()),
+    }
+    bound?;
 
     Ok(layout.dist_dir().to_path_buf())
 }

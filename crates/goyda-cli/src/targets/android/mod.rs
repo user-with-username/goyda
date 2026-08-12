@@ -39,22 +39,12 @@ impl PlatformTarget for AndroidTarget {
     fn build(&self, ctx: &BuildContext) -> Result<PathBuf> {
         term::header("UI", &[&ctx.target_triple]);
 
-        let s = term::spinner_step("dev toolchain");
-        let env = match BuildEnvironment::prepare() {
-            Ok(env) => {
-                s.ok();
-                env
-            }
-            Err(e) => {
-                s.fail(&e.to_string());
-                return Err(e);
-            }
-        };
+        let env = BuildEnvironment::prepare()?;
 
         let layout = AndroidAppLayout::new(&ctx.manifest_dir, &ctx.target_triple, &ctx.crate_name)?;
         layout.init_directories()?;
 
-        let s = term::spinner_step("rust -> android");
+        let s = term::spinner_step("native library");
         let result = native::build_native_library(ctx).and_then(|_| native::copy_native_library(ctx, &layout));
         match result {
             Ok(()) => s.ok(),
