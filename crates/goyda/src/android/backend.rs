@@ -29,7 +29,7 @@ fn resolve_color(value: &StyleValue) -> Option<i32> {
 fn resolve_length(value: &StyleValue) -> Option<i32> {
     let v = goyda_utils::style::resolve_length(value);
     if v.is_none() {
-        if let StyleValue::Spacing(scale) = value {
+        if let StyleValue::Spacing(_) = value {
             #[cfg(debug_assertions)]
             eprintln!("goyda(android): spacing scale index {scale} out of range");
         }
