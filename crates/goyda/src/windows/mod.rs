@@ -189,7 +189,8 @@ use windows_sys::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
     InvalidateRect, RedrawWindow, UpdateWindow, COLOR_WINDOW, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW,
 };
-use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
+use windows_sys::Win32::System::DataExchange::COPYDATASTRUCT;
+use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, LoadLibraryW};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
 use crate::{find_page, Component, LayoutDirection, Page};
@@ -262,6 +263,28 @@ unsafe extern "system" fn root_wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lpa
                 }
                 InvalidateRect(hwnd, std::ptr::null(), 1);
                 0
+            }
+            // `goyda-cli`'s `r` (quick reload) sends this - see
+            // `goyda-cli/src/targets/windows`'s reload trigger. `WM_COPYDATA`
+            // is the standard cross-*process* messaging mechanism (unlike
+            // plain `WPARAM`/`LPARAM`, which are just integers with no
+            // meaning across a process boundary, `WM_COPYDATA`'s payload is
+            // kernel-marshaled into this process automatically), carrying
+            // the freshly rebuilt consumer `cdylib`'s path as UTF-8 bytes.
+            // Loading it and swapping to it in place - no new process, no
+            // window/message-loop restart - is the actual hot-reload: the
+            // window, its `HWND` tree, and this whole process's memory
+            // (including anything the still-running app has stashed outside
+            // a page's own `Signal`s) are completely undisturbed by this.
+            WM_COPYDATA => {
+                let cds = &*(lparam as *const COPYDATASTRUCT);
+                if !cds.lpData.is_null() && cds.cbData > 0 {
+                    let bytes = std::slice::from_raw_parts(cds.lpData as *const u8, cds.cbData as usize);
+                    if let Ok(path) = std::str::from_utf8(bytes) {
+                        hot_swap_dylib(path);
+                    }
+                }
+                1
             }
             _ => DefWindowProcW(hwnd, msg, wparam, lparam),
         }
@@ -406,6 +429,41 @@ pub fn rerender() {
     remount(page);
 }
 
+/// Loads `path` (a freshly rebuilt copy of the consumer crate's `cdylib`,
+/// under a fresh never-before-used filename - Windows locks a loaded DLL's
+/// backing file, so overwriting the *same* path a previous generation used
+/// would fail) into this already-running process and re-renders the
+/// current route from whatever `#[page(...)]`s it just registered.
+///
+/// This works (rather than silently rendering the *old*, already-loaded
+/// generation's pages) because `goyda` itself is only ever loaded into this
+/// process **once**, as an ordinary Windows DLL (`goyda.dll`, produced by
+/// `[lib] crate-type = ["rlib", "dylib"]`) - both this host process and
+/// every generation of the consumer's `cdylib` link against that *same*
+/// `goyda.dll` dynamically (via `-C prefer-dynamic`, set by `goyda-cli`'s
+/// windows target for exactly this reason) instead of each statically
+/// compiling in their own private copy. That's what makes this a real
+/// in-process code swap and not a repeat of the old file-based state-
+/// snapshotting hack: `inventory`'s page registry, [`state::CONTROLS`],
+/// `ROOT`/`MOUNTED`/`CURRENT_PATH`, and every already-mounted control's
+/// `HWND` all live in that one shared `goyda.dll` instance, untouched by
+/// loading a new consumer dylib alongside it - the *only* new code is the
+/// freshly loaded dylib's `#[page(...)]` factory functions, which
+/// `inventory`'s registration ctors (run automatically by the OS loader as
+/// part of `LoadLibraryW`) add to that same shared registry the moment the
+/// call below returns.
+fn hot_swap_dylib(path: &str) {
+    let wide_path = wide(path);
+    let handle = unsafe { LoadLibraryW(wide_path.as_ptr()) };
+    if handle.is_null() {
+        return;
+    }
+
+    let current_path = CURRENT_PATH.with(|p| p.borrow().clone());
+    let Some(page) = find_page(&current_path) else { return };
+    remount(page);
+}
+
 /// A double-clicked `.exe` has no console attached to print panic messages
 /// to, so they'd otherwise vanish silently - this puts them in front of the
 /// user as a message box instead. Running from a terminal still also prints
@@ -424,11 +482,28 @@ fn install_panic_hook() {
 
 /// Runs the app: registers goyda's window classes, creates the top-level
 /// window, mounts the initial `#[page("/")]`, and pumps the Win32 message
-/// loop until the window closes. Called from the small `fn main()` the
-/// `goy` CLI generates for a windows build - see
+/// loop until the window closes. Called from the small, persistent `fn
+/// main()` the `goy` CLI generates for a windows build - see
 /// `goyda-cli/src/targets/windows`.
-pub fn run() {
+///
+/// `initial_dylib`, when given, is `LoadLibraryW`'d before looking up the
+/// initial page - the consumer crate's `#[page(...)]`s live there (built as
+/// a `cdylib`, not statically linked into this host binary), so their
+/// `inventory` registrations only exist once this returns. Every later
+/// reload swaps in a new generation of that same dylib via
+/// [`hot_swap_dylib`] without this function (or its message loop) ever
+/// returning. `None` is only for a consumer that statically links `goyda`
+/// and its own pages directly into one binary itself (no hot reload) -
+/// `goyda-cli` never does this.
+pub fn run(initial_dylib: Option<&std::path::Path>) {
     install_panic_hook();
+
+    if let Some(path) = initial_dylib {
+        let wide_path = wide(&path.to_string_lossy());
+        unsafe {
+            LoadLibraryW(wide_path.as_ptr());
+        }
+    }
 
     let hinstance: HINSTANCE = unsafe { GetModuleHandleW(std::ptr::null()) as HINSTANCE };
     register_classes(hinstance);

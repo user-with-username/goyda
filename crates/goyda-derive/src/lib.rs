@@ -18,8 +18,19 @@ use transformer::{ReactivityGraphTransformer, UiMacroTransformer};
 /// doesn't - see its own doc comment for why that's the only difference):
 /// a page *is* a component, just one with a path attached, so both need
 /// exactly this same rewrite and nothing else.
-fn transform_reactive_fn(input_fn: &mut ItemFn) {
-    let mut graph_transformer = ReactivityGraphTransformer::new();
+///
+/// `key_namespace` (`Some(route)` for `#[page(route)]`, `None` for
+/// `#[component]`) makes every top-level `Signal` this function declares
+/// survive being un-mounted and re-mounted (navigating away and back, or a
+/// windows hot-reload dylib swap) instead of resetting - see
+/// `goyda::reactive::Signal::new_keyed`. `#[component]` doesn't get this:
+/// unlike a page (mounted at most once at a time, uniquely identified by
+/// its route), a component can be called several times in one render (e.g.
+/// once per item in a list), and a key derived only from the function's own
+/// name/declaration order can't tell those calls apart - so it stays
+/// fresh-state-per-render, same as before.
+fn transform_reactive_fn(input_fn: &mut ItemFn, key_namespace: Option<String>) {
+    let mut graph_transformer = ReactivityGraphTransformer::new(key_namespace);
     graph_transformer.build_dependency_graph(input_fn);
 
     let mut_vars_cache = graph_transformer.all_mut_vars.clone();
@@ -51,7 +62,7 @@ fn transform_reactive_fn(input_fn: &mut ItemFn) {
 #[proc_macro_attribute]
 pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
     let mut input_fn = parse_macro_input!(item as ItemFn);
-    transform_reactive_fn(&mut input_fn);
+    transform_reactive_fn(&mut input_fn, None);
     TokenStream::from(quote! { #input_fn })
 }
 
@@ -60,7 +71,7 @@ pub fn page(attr: TokenStream, item: TokenStream) -> TokenStream {
     let route_path = parse_macro_input!(attr as LitStr);
     let mut input_fn = parse_macro_input!(item as ItemFn);
 
-    transform_reactive_fn(&mut input_fn);
+    transform_reactive_fn(&mut input_fn, Some(route_path.value()));
 
     let fn_name = &input_fn.sig.ident;
     let module_name = syn::Ident::new(&format!("__goyda_page_container_{}", fn_name), fn_name.span());

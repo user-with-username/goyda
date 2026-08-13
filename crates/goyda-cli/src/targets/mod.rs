@@ -14,6 +14,21 @@ pub struct BuildContext {
     pub lib_name: String,
     pub target_directory: PathBuf,
     pub start: std::time::Instant,
+    /// `--release` on `goy compile`/`goy run` - each platform's `build`
+    /// threads this into its own `cargo build` (`--release` flag, `release`
+    /// vs `debug` output subdir); `compile` additionally copies the
+    /// finished artifact into `<manifest_dir>/release/<platform>/` when
+    /// this is set, a stable, obvious place to grab it from instead of
+    /// hunting through `target/<triple>/release/...`.
+    pub release: bool,
+}
+
+impl BuildContext {
+    /// The `cargo build` output subdirectory this context's artifacts land
+    /// in - `"release"` or `"debug"`, matching [`BuildContext::release`].
+    pub fn profile_dir(&self) -> &'static str {
+        if self.release { "release" } else { "debug" }
+    }
 }
 
 pub trait PlatformTarget {
@@ -46,8 +61,36 @@ pub trait PlatformTarget {
         );
     }
 
+    /// Starts streaming device/runtime logs and returns immediately (any
+    /// actual log printing happens on a background thread) - `run.rs`'s
+    /// hot-reload loop needs its main thread free to listen for the next
+    /// `r`/`R`/`q` keypress right after this returns, not blocked reading
+    /// logs until the process exits.
     fn stream_logs(&self, _ctx: &BuildContext, _start: std::time::Instant) -> Result<()> {
         Ok(())
+    }
+
+    /// Wipes whatever the last install left behind (uninstalling the APK,
+    /// clearing app data, ...) before the next `build`/`run` - used for a
+    /// full reload (`R` in `run.rs`'s hot-reload loop) to guarantee a truly
+    /// clean slate; a quick reload (`r`) skips this and just reinstalls
+    /// over the existing install, which is what makes it the fast path.
+    fn full_reset(&self, _ctx: &BuildContext) -> Result<()> {
+        Ok(())
+    }
+
+    /// A genuine in-process hot patch for `r` (quick reload) - rebuild just
+    /// the changed code and swap it into a *still-running* app, no new
+    /// process/window, no reinstall. Returns `Ok(true)` when it actually did
+    /// this (`run.rs`'s hot-reload loop then skips the ordinary
+    /// `build`+`run` entirely for that keypress); `Ok(false)` falls through
+    /// to the ordinary path instead - the correct answer whenever there's no
+    /// already-running instance to patch yet (the very first `r` right
+    /// after startup) or the platform has no such mechanism at all. Only
+    /// [`windows::WindowsTarget`](crate::targets::windows::WindowsTarget)
+    /// implements this for now - see its own doc comment for how.
+    fn quick_reload(&self, _ctx: &BuildContext) -> Result<bool> {
+        Ok(false)
     }
 }
 

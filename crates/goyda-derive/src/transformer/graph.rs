@@ -12,14 +12,25 @@ pub struct ReactivityGraphTransformer {
     pub all_mut_vars: HashSet<Ident>,
     pub graph: DiGraph<Ident, ()>,
     pub node_indices: HashMap<Ident, petgraph::graph::NodeIndex>,
+    /// A stable identity for this function's root `Signal`s to persist
+    /// their value under across an unmount/remount (see
+    /// `goyda::reactive::Signal::new_keyed`) - `Some(route)` for
+    /// `#[page(route)]`, `None` for `#[component]`. `None` means every
+    /// `Signal` here is the plain, unkeyed kind, reset fresh on every call
+    /// (see [`transform_reactive_fn`](crate::transform_reactive_fn)'s doc
+    /// comment for why `#[component]` doesn't get this).
+    pub key_namespace: Option<String>,
+    next_key_index: usize,
 }
 
 impl ReactivityGraphTransformer {
-    pub fn new() -> Self {
+    pub fn new(key_namespace: Option<String>) -> Self {
         Self {
             all_mut_vars: HashSet::new(),
             graph: DiGraph::new(),
             node_indices: HashMap::new(),
+            key_namespace,
+            next_key_index: 0,
         }
     }
 
@@ -109,7 +120,23 @@ impl VisitMut for ReactivityGraphTransformer {
                         .unwrap_or_default();
 
                     if incoming_edges.is_empty() {
-                        *stmt = if let Some(ty) = &annotated_ty {
+                        let key_literal = self.key_namespace.as_ref().map(|ns| {
+                            let key = format!("{ns}#{}", self.next_key_index);
+                            self.next_key_index += 1;
+                            key
+                        });
+
+                        *stmt = if let Some(key) = &key_literal {
+                            if let Some(ty) = &annotated_ty {
+                                syn::parse2(quote! {
+                                    let #ident: ::goyda::reactive::Signal<#ty> = ::goyda::reactive::Signal::new_keyed(#key, #init_expr);
+                                }).unwrap()
+                            } else {
+                                syn::parse2(quote! {
+                                    let #ident = ::goyda::reactive::Signal::new_keyed(#key, #init_expr);
+                                }).unwrap()
+                            }
+                        } else if let Some(ty) = &annotated_ty {
                             syn::parse2(quote! {
                                 let #ident: ::goyda::reactive::Signal<#ty> = ::goyda::reactive::Signal::new(#init_expr);
                             }).unwrap()

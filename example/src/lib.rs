@@ -53,7 +53,7 @@ pub fn counter_page() -> Component {
 
         image { src: asset!("logo.svg") },
 
-        text { "Current: ", count }
+        text { "currffenвt: ", count }
             .color(COLOR_PRIMARY())
             .font_size(FONT_SIZE_2XL)
             .font("fonts/Inter-Bold.ttf"),

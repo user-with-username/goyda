@@ -4,13 +4,35 @@ use std::io::{BufRead, BufReader, Write};
 use std::net::{TcpListener, TcpStream};
 use std::path::{Path, PathBuf};
 use std::process::Command;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::sync::OnceLock;
 use std::time::Instant;
 
 use crate::term;
 
 const PREFERRED_PORT: u16 = 4173;
 
+/// Bumped every time [`serve_and_open`] is called after the first (i.e.
+/// every `r`/`R` reload, once the wasm has already been rebuilt onto
+/// disk) - polled by the live-reload script `templates/index.html`
+/// injects, via [`handle_connection`]'s `/__goyda_reload` route.
+static RELOAD_GENERATION: AtomicU64 = AtomicU64::new(0);
+
+/// The dev server binds its port exactly once for the process's lifetime -
+/// there's nothing to rebind on a reload (the wasm's already been rebuilt
+/// onto disk by the time this runs again; every request already reads
+/// straight from disk with no caching - see [`handle_connection`]), so a
+/// second/third/... call just bumps [`RELOAD_GENERATION`] and returns
+/// immediately instead of trying (and failing) to bind the same port again.
+static SERVER_STARTED: OnceLock<()> = OnceLock::new();
+
 pub fn serve_and_open(dist_dir: &Path, start: Instant) -> Result<()> {
+    if SERVER_STARTED.get().is_some() {
+        RELOAD_GENERATION.fetch_add(1, Ordering::Relaxed);
+        term::ready("rebuilt - the dev server will pick it up on the next reload/poll", start.elapsed());
+        return Ok(());
+    }
+
     let s = term::spinner_step("starting web server");
     let listener = bind_server(PREFERRED_PORT);
     let listener = match listener {
@@ -29,17 +51,21 @@ pub fn serve_and_open(dist_dir: &Path, start: Instant) -> Result<()> {
     term::ready(&format!("{url} (Ctrl+C to stop)"), start.elapsed());
     open_browser(&url);
 
+    let _ = SERVER_STARTED.set(());
+
     let dist_dir = dist_dir.to_path_buf();
-    for stream in listener.incoming() {
-        match stream {
-            Ok(stream) => {
-                if let Err(e) = handle_connection(stream, &dist_dir) {
-                    eprintln!("goyda(web): request error: {e}");
+    std::thread::spawn(move || {
+        for stream in listener.incoming() {
+            match stream {
+                Ok(stream) => {
+                    if let Err(e) = handle_connection(stream, &dist_dir) {
+                        eprintln!("goyda(web): request error: {e}");
+                    }
                 }
+                Err(e) => eprintln!("goyda(web): connection error: {e}"),
             }
-            Err(e) => eprintln!("goyda(web): connection error: {e}"),
         }
-    }
+    });
 
     Ok(())
 }
@@ -134,6 +160,12 @@ fn handle_connection(stream: TcpStream, dist_dir: &Path) -> Result<()> {
     }
 
     let url_path = raw_path.split('?').next().unwrap_or("/");
+
+    if url_path == "/__goyda_reload" {
+        let id = RELOAD_GENERATION.load(Ordering::Relaxed).to_string();
+        return write_response(&mut stream, 200, "OK", "text/plain; charset=utf-8", id.as_bytes());
+    }
+
     let file_path = resolve_requested_file(dist_dir, url_path);
 
     match fs::read(&file_path) {

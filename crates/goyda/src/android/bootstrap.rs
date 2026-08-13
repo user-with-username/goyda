@@ -185,6 +185,26 @@ pub fn rerender() {
     swap_page(&mut env, &mut bridge, page);
 }
 
+/// Re-renders the currently mounted route after a hot-reload swap - called
+/// from `HotReloadSwapReceiver.onReceive` (see `goyda-cli`'s android
+/// target), right after it calls `System.load(...)` on a freshly rebuilt
+/// generation of the consumer's `.so` (see `goyda::android::bootstrap`'s
+/// module doc comment and `AndroidTarget::quick_reload` for the sending
+/// half). No route change, no back-stack entry, same as [`rerender`] -
+/// [`find_page`] already sees the newly loaded generation's
+/// `#[page(...)]`s by the time this runs, since `inventory`'s registry
+/// lives in `libgoyda.so` (loaded once, shared by every generation via `-C
+/// prefer-dynamic` - see `goyda-cli`'s android `native.rs`) and the new
+/// generation's `inventory::submit!` ctors already ran as a side effect of
+/// `System.load` itself.
+fn native_hot_swap(mut env: JNIEnv, _this: JObject) {
+    let Some(bridge_lock) = BRIDGE.get() else { return };
+    let mut bridge = bridge_lock.lock().unwrap_or_else(|e| e.into_inner());
+
+    let Some(page) = find_page(&bridge.current_path) else { return };
+    swap_page(&mut env, &mut bridge, page);
+}
+
 /// Finds the Java/Kotlin class that called into native code (by walking the
 /// current thread's stack trace and skipping framework frames) and
 /// dynamically registers `native_init` on it as `nativeInit`. Avoids
@@ -235,7 +255,21 @@ pub extern "C" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
     }
 
     if let Some(class_path) = caller_class_name {
-        if let Ok(class) = env.find_class(&class_path) {
+        // The stack-walk above finds whichever class happened to trigger
+        // this library load - normally `Goyda` (via `new Goyda()` in
+        // `MainActivity.start`), but the caller class isn't necessarily the
+        // class these `native*` methods are actually *declared* on.
+        // Registering onto whatever class happened to trigger the load
+        // (rather than `Goyda` specifically) would silently bind them to
+        // the wrong class, so this always targets "`Goyda` in the same
+        // package as whatever class was found" instead of the found class
+        // itself.
+        let goyda_class_path = class_path
+            .rsplit_once('/')
+            .map(|(package, _)| format!("{package}/Goyda"))
+            .unwrap_or_else(|| class_path.clone());
+
+        if let Ok(class) = env.find_class(&goyda_class_path) {
             let methods = [
                 NativeMethod {
                     name: JNIString::from("nativeInit"),
@@ -246,6 +280,11 @@ pub extern "C" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
                     name: JNIString::from("nativeBack"),
                     sig: JNIString::from(sig!(() -> boolean)),
                     fn_ptr: native_back as *mut c_void,
+                },
+                NativeMethod {
+                    name: JNIString::from("nativeHotSwap"),
+                    sig: JNIString::from(sig!(() -> void)),
+                    fn_ptr: native_hot_swap as *mut c_void,
                 },
             ];
             env.register_native_methods(&class, &methods).expect("Dynamic registration failed");

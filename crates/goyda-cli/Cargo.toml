@@ -16,3 +16,7 @@ which = "8.0.5"
 zip = "8.6.0"
 cargo_toml = "1.0.0"
 colored = "2.0"
+crossterm = "0.28"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_DataExchange"] }

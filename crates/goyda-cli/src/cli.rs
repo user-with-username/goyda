@@ -23,6 +23,12 @@ pub enum Cmd {
 
         #[arg(long, default_value = ".")]
         manifest_dir: PathBuf,
+
+        /// Optimized build (`cargo build --release`) - the finished
+        /// artifact also gets copied into `<manifest_dir>/release/<platform>/`
+        /// for easy grabbing, alongside its usual `target/` location.
+        #[arg(long)]
+        release: bool,
     },
 
     /// Build and run the project for a platform.
@@ -35,6 +41,11 @@ pub enum Cmd {
 
         #[arg(long, default_value = ".")]
         manifest_dir: PathBuf,
+
+        /// Optimized build (`cargo build --release`) - slower to rebuild on
+        /// each hot-reload, but useful for checking release-only behavior.
+        #[arg(long)]
+        release: bool,
     },
 }
 

@@ -31,7 +31,7 @@ pub fn build_web_app(ctx: &BuildContext) -> Result<PathBuf> {
     let wasm_path = ctx
         .target_directory
         .join("wasm32-unknown-unknown")
-        .join("debug")
+        .join(ctx.profile_dir())
         .join(format!("{}.wasm", ctx.lib_name));
 
     if !wasm_path.exists() {
@@ -85,16 +85,21 @@ fn resolve_wasm_bindgen_version(ctx: &BuildContext) -> Result<String> {
 }
 
 fn compile_to_wasm(ctx: &BuildContext) -> Result<()> {
-    let mut cmd = Command::new("cargo");
-    cmd.current_dir(&ctx.manifest_dir).args(&[
+    let mut args = vec![
         "build",
         "--target",
-        &ctx.target_triple,
+        ctx.target_triple.as_str(),
         "--lib",
         "--no-default-features",
         "--features",
         "goyda/web",
-    ]);
+    ];
+    if ctx.release {
+        args.push("--release");
+    }
+
+    let mut cmd = Command::new("cargo");
+    cmd.current_dir(&ctx.manifest_dir).args(&args);
 
     run_command_quiet(&mut cmd, "building the Rust library for wasm32 via cargo build failed")
 }

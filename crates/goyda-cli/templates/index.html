@@ -11,5 +11,26 @@
     import init from "./{out_name}.js";
     init();
   </script>
+  <script>
+    // `goy run web`'s dev server (see goyda-cli/src/targets/web/serve.rs)
+    // serves `/__goyda_reload` as a counter that bumps every time `r`/`R`
+    // rebuilds the wasm - polling it and reloading on change is this
+    // project's hot reload for the web target (no server push needed,
+    // sessionStorage - not wasm memory - is what actually keeps state
+    // across the reload, see below). A static `--release` host has no
+    // such endpoint, so this just fails quietly and does nothing there.
+    (function () {
+      let lastSeen = null;
+      setInterval(function () {
+        fetch("/__goyda_reload")
+          .then(function (r) { return r.text(); })
+          .then(function (id) {
+            if (lastSeen === null) { lastSeen = id; return; }
+            if (id !== lastSeen) { location.reload(); }
+          })
+          .catch(function () {});
+      }, 1000);
+    })();
+  </script>
 </body>
 </html>
