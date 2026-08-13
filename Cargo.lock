@@ -602,6 +602,8 @@ dependencies = [
  "once_cell",
  "paste",
  "resvg",
+ "serde",
+ "serde_json",
  "wasm-bindgen",
  "web-sys",
  "windows-sys 0.61.2",

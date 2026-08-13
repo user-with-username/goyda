@@ -40,6 +40,13 @@ thread_local! {
     /// The `WebBackend` and root DOM node stay fixed for the app's lifetime -
     /// only the mounted component tree changes on navigation.
     static MOUNT: RefCell<Option<(WebBackend, web_sys::Element)>> = RefCell::new(None);
+    /// Kept (rather than `.forget()`-ten) so [`goyda_teardown`] can actually
+    /// remove it from `window` before a hot reload discards this module -
+    /// a `.forget()`-ten closure stays registered forever, and calling into
+    /// it after this module's instance is gone (the next `popstate`, e.g.
+    /// the user pressing the browser's back button) would reach into freed
+    /// wasm memory.
+    static POPSTATE_CLOSURE: RefCell<Option<Closure<dyn Fn()>>> = RefCell::new(None);
 }
 
 /// Renders `page` and mounts it into the app's root, replacing whatever was
@@ -124,11 +131,18 @@ fn detect_theme_mode() -> crate::core::theme::ThemeMode {
     }
 }
 
-/// Entry point wasm-bindgen invokes automatically once the module is
-/// instantiated in the browser - no glue code is required in consumer
-/// crates, matching how android pages need no manual bootstrap either.
-#[wasm_bindgen(start)]
-pub fn __goyda_web_start() -> Result<(), JsValue> {
+/// The app's real entry point - called explicitly from `index.html`'s
+/// bootstrap script (see `goyda-cli`'s web target) right after the wasm
+/// module finishes instantiating, rather than via wasm-bindgen's
+/// `#[wasm_bindgen(start)]` auto-invoke: a hot reload needs [`goyda_install_state`]
+/// to run *between* instantiation and the first page mount (so
+/// `Signal::new_keyed` sees restored values from the very first render),
+/// and `#[wasm_bindgen(start)]` gives JS no chance to call anything in that
+/// gap - it fires synchronously as part of instantiation itself. An
+/// ordinary (non-reload) first load just calls this with nothing to
+/// install, which is exactly today's behavior.
+#[wasm_bindgen]
+pub fn goyda_start() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
 
     crate::core::theme::init_theme_mode(detect_theme_mode());
@@ -147,7 +161,41 @@ pub fn __goyda_web_start() -> Result<(), JsValue> {
     window
         .add_event_listener_with_callback("popstate", on_pop_state.as_ref().unchecked_ref())
         .map_err(|_| JsValue::from_str("goyda(web): failed to attach popstate listener"))?;
-    on_pop_state.forget();
+    POPSTATE_CLOSURE.with(|cell| *cell.borrow_mut() = Some(on_pop_state));
 
     Ok(())
+}
+
+/// JS-exposed wrapper around [`crate::reactive::dump_state`] - see that
+/// function's doc comment. Called on the *old* module right before a hot
+/// reload discards it.
+#[wasm_bindgen]
+pub fn goyda_dump_state() -> String {
+    crate::reactive::dump_state()
+}
+
+/// JS-exposed wrapper around [`crate::reactive::install_state`] - called on
+/// the *new* module, before [`goyda_start`], with whatever
+/// [`goyda_dump_state`] returned from the module it's replacing.
+#[wasm_bindgen]
+pub fn goyda_install_state(json: String) {
+    crate::reactive::install_state(&json);
+}
+
+/// Removes the `popstate` listener [`goyda_start`] registered - called on
+/// the *old* module right before a hot reload discards it, so the browser
+/// never calls back into this (about to be freed) module's memory. Only
+/// `popstate` needs this: every other listener in this backend is attached
+/// to an individual rendered DOM node (see `web/backend.rs`), which stops
+/// receiving events the moment [`render_page`] replaces it - `window`
+/// itself isn't torn down by a hot reload, so anything attached directly to
+/// it needs explicit cleanup.
+#[wasm_bindgen]
+pub fn goyda_teardown() {
+    let Some(window) = web_sys::window() else { return };
+    POPSTATE_CLOSURE.with(|cell| {
+        if let Some(closure) = cell.borrow_mut().take() {
+            let _ = window.remove_event_listener_with_callback("popstate", closure.as_ref().unchecked_ref());
+        }
+    });
 }

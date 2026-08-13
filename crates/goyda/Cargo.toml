@@ -18,6 +18,8 @@ wasm-bindgen = { version = "0.2.100", optional = true }
 js-sys = { version = "0.3.77", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
 resvg = { version = "0.48.1", default-features = false, optional = true }
+serde = { version = "1.0", features = ["derive"], optional = true }
+serde_json = { version = "1.0", optional = true }
 windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_Graphics_Gdi", "Win32_System_LibraryLoader", "Win32_UI_Controls", "Win32_UI_Shell", "Win32_Graphics_GdiPlus", "Win32_UI_HiDpi", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_Registry", "Win32_System_DataExchange"], optional = true }
 image = { version = "0.25.10", default-features = false, features = ["png", "jpeg"], optional = true }
 
@@ -53,5 +55,5 @@ features = [
 [features]
 default = []
 android = ["dep:jni", "dep:resvg"]
-web = ["dep:wasm-bindgen", "dep:web-sys", "dep:js-sys", "dep:console_error_panic_hook"]
+web = ["dep:wasm-bindgen", "dep:web-sys", "dep:js-sys", "dep:console_error_panic_hook", "dep:serde", "dep:serde_json"]
 windows = ["dep:windows-sys", "dep:resvg", "dep:image"]

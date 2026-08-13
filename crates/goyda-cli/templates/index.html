@@ -8,25 +8,52 @@
 <body>
   <div id="app"></div>
   <script type="module">
-    import init from "./{out_name}.js";
-    init();
-  </script>
-  <script>
+    // `goyda_start` (not wasm-bindgen's `#[wasm_bindgen(start)]` auto-run)
+    // is called explicitly here - a hot reload needs `goyda_install_state`
+    // to run *between* the new module finishing instantiation and its
+    // first page mount, and an auto-run start gives no such gap to work
+    // with. An ordinary first load below just calls it with nothing to
+    // install.
+    let currentModule = null;
+
+    async function boot(mod, savedStateJson) {
+      await mod.default();
+      if (savedStateJson) {
+        mod.goyda_install_state(savedStateJson);
+      }
+      mod.goyda_start();
+      currentModule = mod;
+    }
+
+    boot(await import("./{out_name}.js?v=0"), null);
+
     // `goy run web`'s dev server (see goyda-cli/src/targets/web/serve.rs)
     // serves `/__goyda_reload` as a counter that bumps every time `r`/`R`
-    // rebuilds the wasm - polling it and reloading on change is this
-    // project's hot reload for the web target (no server push needed,
-    // sessionStorage - not wasm memory - is what actually keeps state
-    // across the reload, see below). A static `--release` host has no
-    // such endpoint, so this just fails quietly and does nothing there.
+    // rebuilds the wasm - polled here for this project's web hot reload.
+    // Unlike `location.reload()` (the old approach), the page itself is
+    // never torn down: the *old* module dumps its `Signal` state to a
+    // plain JS string (`goyda_dump_state`) and detaches its `window`-level
+    // listeners (`goyda_teardown`) right before being discarded, then a
+    // freshly rebuilt module is imported under a cache-busted URL (a plain
+    // `import()` of the same URL would just return the already-cached old
+    // module - ES module resolution caches by exact URL string,
+    // independent of any HTTP cache headers) and fed that dumped state
+    // before its own first render. A static `--release` host has no
+    // `/__goyda_reload` endpoint, so this just fails quietly and does
+    // nothing there.
     (function () {
       let lastSeen = null;
       setInterval(function () {
         fetch("/__goyda_reload")
           .then(function (r) { return r.text(); })
-          .then(function (id) {
+          .then(async function (id) {
             if (lastSeen === null) { lastSeen = id; return; }
-            if (id !== lastSeen) { location.reload(); }
+            if (id === lastSeen) { return; }
+            lastSeen = id;
+
+            const savedStateJson = currentModule.goyda_dump_state();
+            currentModule.goyda_teardown();
+            await boot(await import("./{out_name}.js?v=" + id), savedStateJson);
           })
           .catch(function () {});
       }, 1000);
