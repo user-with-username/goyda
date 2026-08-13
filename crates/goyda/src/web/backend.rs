@@ -69,6 +69,34 @@ fn asset_url(asset: &Asset) -> String {
 
 thread_local! {
     static INJECTED_FONT_FACES: RefCell<HashSet<String>> = RefCell::new(HashSet::new());
+    static SWITCH_STYLE_INJECTED: RefCell<bool> = RefCell::new(false);
+}
+
+/// Injects the `.goyda-switch`/`.goyda-switch-track` rules `create_switch`
+/// relies on into `<head>` (once per page - subsequent calls are no-ops).
+fn ensure_switch_style_injected() {
+    let already_injected = SWITCH_STYLE_INJECTED.with(|f| *f.borrow());
+    if already_injected {
+        return;
+    }
+
+    const RULE: &str = "\
+        .goyda-switch{position:relative;display:inline-flex;width:40px;height:24px;flex-shrink:0;}\
+        .goyda-switch input{position:absolute;inset:0;width:100%;height:100%;margin:0;opacity:0;cursor:pointer;}\
+        .goyda-switch .goyda-switch-track{position:absolute;inset:0;background:#c8c8c8;border-radius:12px;transition:background .15s ease;pointer-events:none;}\
+        .goyda-switch .goyda-switch-track::before{content:\"\";position:absolute;left:3px;top:3px;width:18px;height:18px;background:#fff;border-radius:50%;transition:transform .15s ease;box-shadow:0 1px 2px rgba(0,0,0,.3);}\
+        .goyda-switch input:checked+.goyda-switch-track{background:#2196f3;}\
+        .goyda-switch input:checked+.goyda-switch-track::before{transform:translateX(16px);}\
+    ";
+
+    if let Some(head) = document().head() {
+        if let Ok(style_element) = document().create_element("style") {
+            style_element.set_text_content(Some(RULE));
+            if head.append_child(&style_element).is_ok() {
+                SWITCH_STYLE_INJECTED.with(|f| *f.borrow_mut() = true);
+            }
+        }
+    }
 }
 
 /// A CSS-safe, stable `font-family` name derived from the asset path.
@@ -218,6 +246,11 @@ impl BackendUpdater for WebUpdater {
             Update::SetText(content) => {
                 view.element.set_text_content(Some(&content));
             }
+            Update::SetProgress(value) => {
+                if let Some(input) = view.element.dyn_ref::<web_sys::HtmlInputElement>() {
+                    input.set_value(&value.clamp(0.0, 1.0).to_string());
+                }
+            }
         }
     }
 }
@@ -270,6 +303,115 @@ impl Backend for WebBackend {
         set_style(&element, "max-width", "100%");
         set_style(&element, "height", "auto");
 
+        WebView { element }
+    }
+
+    fn create_text_input(&mut self, placeholder: &str, initial_text: &str) -> Self::PlatformView {
+        let element = document()
+            .create_element("input")
+            .expect("goyda(web): failed to create <input>");
+        let _ = element.set_attribute("type", "text");
+        let _ = element.set_attribute("placeholder", placeholder);
+        if !initial_text.is_empty() {
+            let _ = element.set_attribute("value", initial_text);
+        }
+        set_style(&element, "font", "inherit");
+        set_style(&element, "box-sizing", "border-box");
+        WebView { element }
+    }
+
+    fn create_checkbox(&mut self, label: &str, checked: bool) -> Self::PlatformView {
+        let wrapper = document()
+            .create_element("label")
+            .expect("goyda(web): failed to create <label>");
+        set_style(&wrapper, "display", "inline-flex");
+        set_style(&wrapper, "align-items", "center");
+        set_style(&wrapper, "gap", "6px");
+        set_style(&wrapper, "cursor", "pointer");
+
+        let input = document()
+            .create_element("input")
+            .expect("goyda(web): failed to create <input>");
+        let _ = input.set_attribute("type", "checkbox");
+        if checked {
+            let _ = input.set_attribute("checked", "checked");
+        }
+        let _ = wrapper.append_child(&input);
+
+        if !label.is_empty() {
+            let text = document().create_element("span").expect("goyda(web): failed to create <span>");
+            text.set_text_content(Some(label));
+            let _ = wrapper.append_child(&text);
+        }
+
+        WebView { element: wrapper }
+    }
+
+    fn create_switch(&mut self, checked: bool) -> Self::PlatformView {
+        // No native `<switch>` element exists, so this reuses a real
+        // `input[type=checkbox]` for state/click-toggle/keyboard behavior
+        // (same element the `checked_change` listener's `change` handler
+        // already expects, see `crate::listeners` - `change` bubbles, so
+        // attaching to this wrapping `<label>` still works) - visually
+        // hidden and paired with a sibling `<span>` track/thumb, since an
+        // `appearance: none` checkbox alone has no `:checked` visual state
+        // of its own to show which way it's toggled.
+        ensure_switch_style_injected();
+
+        let wrapper = document().create_element("label").expect("goyda(web): failed to create <label>");
+        let _ = wrapper.set_attribute("class", "goyda-switch");
+
+        let input = document().create_element("input").expect("goyda(web): failed to create <input>");
+        let _ = input.set_attribute("type", "checkbox");
+        if checked {
+            let _ = input.set_attribute("checked", "checked");
+        }
+        let _ = wrapper.append_child(&input);
+
+        let track = document().create_element("span").expect("goyda(web): failed to create <span>");
+        let _ = track.set_attribute("class", "goyda-switch-track");
+        let _ = wrapper.append_child(&track);
+
+        WebView { element: wrapper }
+    }
+
+    fn create_progress(&mut self, value: f32) -> Self::PlatformView {
+        // A scrubber, not just a read-only indicator - `<input type=range>`
+        // gives click/drag-to-seek for free (report changes to the app with
+        // `.on_value_changed(...)`, wired to this element's `input` event by
+        // the `seek` listener - see `crate::listeners`), which a plain
+        // `<progress>` doesn't support.
+        let element = document()
+            .create_element("input")
+            .expect("goyda(web): failed to create <input>");
+        let _ = element.set_attribute("type", "range");
+        let _ = element.set_attribute("min", "0");
+        let _ = element.set_attribute("max", "1");
+        let _ = element.set_attribute("step", "0.001");
+        let _ = element.set_attribute("value", &value.clamp(0.0, 1.0).to_string());
+        set_style(&element, "width", "100%");
+        WebView { element }
+    }
+
+    fn create_spacer(&mut self, size: i32) -> Self::PlatformView {
+        let element = document()
+            .create_element("div")
+            .expect("goyda(web): failed to create <div>");
+        set_style(&element, "width", &format!("{size}px"));
+        set_style(&element, "height", &format!("{size}px"));
+        set_style(&element, "flex-shrink", "0");
+        WebView { element }
+    }
+
+    fn create_divider(&mut self) -> Self::PlatformView {
+        let element = document()
+            .create_element("hr")
+            .expect("goyda(web): failed to create <hr>");
+        set_style(&element, "width", "100%");
+        set_style(&element, "border", "none");
+        set_style(&element, "border-top", "1px solid #c8c8c8");
+        set_style(&element, "margin", "0");
+        set_style(&element, "flex-shrink", "0");
         WebView { element }
     }
 

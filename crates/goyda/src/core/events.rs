@@ -9,8 +9,10 @@ pub enum Event {
         before: usize,
         count: usize,
     },
+    ValueChanged(f32),
 }
 
 pub enum Update {
     SetText(String),
+    SetProgress(f32),
 }

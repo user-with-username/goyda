@@ -96,6 +96,97 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                 let mut r = content_rect;
                 DrawTextW(hdc, wide.as_ptr(), -1, &mut r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
             }
+            ControlKind::TextInput { text, placeholder } => {
+                if let Some(font) = state.font {
+                    SelectObject(hdc, font);
+                }
+                SetBkMode(hdc, TRANSPARENT as i32);
+                let (shown, color) = if text.is_empty() {
+                    (placeholder.as_str(), 0x00A0_A0A0)
+                } else {
+                    (text.as_str(), state.text_color.unwrap_or(0x0000_0000))
+                };
+                SetTextColor(hdc, color);
+                let wide: Vec<u16> = shown.encode_utf16().chain(std::iter::once(0)).collect();
+                let mut r = content_rect;
+                DrawTextW(hdc, wide.as_ptr(), -1, &mut r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+            }
+            ControlKind::Checkbox { label } => {
+                let box_size = 16;
+                let box_top = rect.top + (rect.bottom - rect.top - box_size) / 2;
+                let box_rect = RECT { left: rect.left, top: box_top, right: rect.left + box_size, bottom: box_top + box_size };
+
+                let border_pen = CreatePen(PS_SOLID as i32, 1, 0x0090_9090);
+                let old_pen = SelectObject(hdc, border_pen);
+                let fill_brush = CreateSolidBrush(if state.checked { 0x00D0_7800 } else { 0x00FF_FFFF });
+                let old_brush = SelectObject(hdc, fill_brush);
+                Rectangle(hdc, box_rect.left, box_rect.top, box_rect.right, box_rect.bottom);
+                SelectObject(hdc, old_pen);
+                SelectObject(hdc, old_brush);
+                DeleteObject(border_pen);
+                DeleteObject(fill_brush);
+
+                if state.checked {
+                    let check_pen = CreatePen(PS_SOLID as i32, 2, 0x00FF_FFFF);
+                    let old = SelectObject(hdc, check_pen);
+                    MoveToEx(hdc, box_rect.left + 3, box_rect.top + 8, std::ptr::null_mut());
+                    LineTo(hdc, box_rect.left + 6, box_rect.top + 11);
+                    LineTo(hdc, box_rect.left + 13, box_rect.top + 4);
+                    SelectObject(hdc, old);
+                    DeleteObject(check_pen);
+                }
+
+                if !label.is_empty() {
+                    if let Some(font) = state.font {
+                        SelectObject(hdc, font);
+                    }
+                    SetBkMode(hdc, TRANSPARENT as i32);
+                    SetTextColor(hdc, state.text_color.unwrap_or(0x0000_0000));
+                    let wide: Vec<u16> = label.encode_utf16().chain(std::iter::once(0)).collect();
+                    let mut r = RECT { left: box_rect.right + 8, top: rect.top, right: rect.right, bottom: rect.bottom };
+                    DrawTextW(hdc, wide.as_ptr(), -1, &mut r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                }
+            }
+            ControlKind::Switch => {
+                let (track_w, track_h) = (40, 22);
+                let track_top = rect.top + (rect.bottom - rect.top - track_h) / 2;
+                let track_rect = RECT { left: rect.left, top: track_top, right: rect.left + track_w, bottom: track_top + track_h };
+
+                let track_brush = CreateSolidBrush(if state.checked { 0x00D0_7800 } else { 0x00C8_C8C8 });
+                let old_brush = SelectObject(hdc, track_brush);
+                let pen = CreatePen(PS_NULL as i32, 0, 0);
+                let old_pen = SelectObject(hdc, pen);
+                RoundRect(hdc, track_rect.left, track_rect.top, track_rect.right, track_rect.bottom, track_h, track_h);
+                SelectObject(hdc, old_pen);
+                SelectObject(hdc, old_brush);
+                DeleteObject(track_brush);
+                DeleteObject(pen);
+
+                let thumb_d = track_h - 4;
+                let thumb_left = if state.checked { track_rect.right - thumb_d - 2 } else { track_rect.left + 2 };
+                let thumb_top = track_rect.top + 2;
+                let thumb_brush = CreateSolidBrush(0x00FF_FFFF);
+                let old_brush = SelectObject(hdc, thumb_brush);
+                Ellipse(hdc, thumb_left, thumb_top, thumb_left + thumb_d, thumb_top + thumb_d);
+                SelectObject(hdc, old_brush);
+                DeleteObject(thumb_brush);
+            }
+            ControlKind::Progress { value } => {
+                let filled_w = ((rect.right - rect.left) as f32 * value.clamp(0.0, 1.0)) as i32;
+                if filled_w > 0 {
+                    let fill_rect = RECT { left: rect.left, top: rect.top, right: rect.left + filled_w, bottom: rect.bottom };
+                    let brush = CreateSolidBrush(0x00D0_7800);
+                    let pen = CreatePen(PS_NULL as i32, 0, 0);
+                    let old_pen = SelectObject(hdc, pen);
+                    let old_brush = SelectObject(hdc, brush);
+                    let radius = state.border_radius * 2;
+                    RoundRect(hdc, fill_rect.left, fill_rect.top, fill_rect.right, fill_rect.bottom, radius, radius);
+                    SelectObject(hdc, old_pen);
+                    SelectObject(hdc, old_brush);
+                    DeleteObject(brush);
+                    DeleteObject(pen);
+                }
+            }
             ControlKind::Image { bitmap: Some(bmp), width, height } => {
                 let mem_dc = CreateCompatibleDC(hdc);
                 let old = SelectObject(mem_dc, *bmp as _);
@@ -133,7 +224,7 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                 SelectObject(mem_dc, old);
                 DeleteDC(mem_dc);
             }
-            ControlKind::Image { bitmap: None, .. } | ControlKind::Panel { .. } => {}
+            ControlKind::Image { bitmap: None, .. } | ControlKind::Panel { .. } | ControlKind::Spacer | ControlKind::Divider => {}
         }
     });
 }

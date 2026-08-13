@@ -31,6 +31,16 @@ pub enum ControlKind {
     /// the component tree - only the initial (wrap-content) sizing happens
     /// during `create_stack` itself.
     Panel { direction: LayoutDirection, spacing: i32, children: Vec<HWND> },
+    /// `text` holds what's actually been typed (kept in sync with
+    /// [`ControlState::text_buffer`] by the `text_watcher` listener's
+    /// `WM_CHAR` hook), `placeholder` is only drawn when `text` is empty.
+    TextInput { text: String, placeholder: String },
+    Checkbox { label: String },
+    Switch,
+    /// `0.0..=1.0`.
+    Progress { value: f32 },
+    Spacer,
+    Divider,
 }
 
 #[derive(Clone, Default)]
@@ -61,6 +71,10 @@ pub struct ControlState {
     /// composition works at any nesting depth.
     pub natural_size: (i32, i32),
     pub text_buffer: String,
+    /// Toggled state for `Checkbox`/`Switch` controls, flipped in-place by
+    /// the `checked_change` listener's windows hook (see
+    /// `crate::listeners`) so painting can reflect it.
+    pub checked: bool,
 }
 
 impl ControlState {
@@ -78,6 +92,7 @@ impl ControlState {
             margin: Edges::default(),
             natural_size: (0, 0),
             text_buffer: String::new(),
+            checked: false,
         }
     }
 }

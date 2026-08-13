@@ -3,6 +3,12 @@ pub mod button;
 pub mod image;
 pub mod layout;
 pub mod style;
+pub mod text_input;
+pub mod checkbox;
+pub mod switch;
+pub mod progress;
+pub mod spacer;
+pub mod divider;
 
 pub use text::Text;
 pub use button::Button;
@@ -10,6 +16,12 @@ pub use image::Image;
 pub use layout::Stack;
 pub use style::{Axis, Edge, StyleProperty, StyleValue};
 pub use goyda_utils::{Asset, Color};
+pub use text_input::TextInput;
+pub use checkbox::Checkbox;
+pub use switch::Switch;
+pub use progress::Progress;
+pub use spacer::Spacer;
+pub use divider::Divider;
 
 use crate::core::Backend;
 use crate::core::events::{Event, Update};
@@ -32,6 +44,12 @@ pub enum Component {
     Button(Button),
     Image(Image),
     Stack(Stack),
+    TextInput(TextInput),
+    Checkbox(Checkbox),
+    Switch(Switch),
+    Progress(Progress),
+    Spacer(Spacer),
+    Divider(Divider),
     WithHandlers {
         component: Box<Component>,
         handlers: Vec<Handler>,
@@ -57,6 +75,36 @@ impl Component {
 
     pub fn stack(direction: LayoutDirection, spacing: i32, children: Vec<Component>) -> Self {
         Self::Stack(Stack { direction, spacing, children })
+    }
+
+    /// A single-line editable text field.
+    pub fn text_input(placeholder: impl Into<String>) -> Self {
+        Self::TextInput(TextInput { placeholder: placeholder.into(), initial_text: String::new() })
+    }
+
+    /// A labeled checkbox, starting `checked` or not.
+    pub fn checkbox(label: impl Into<String>, checked: bool) -> Self {
+        Self::Checkbox(Checkbox { label: label.into(), checked })
+    }
+
+    /// An on/off toggle switch, starting `checked` or not.
+    pub fn switch(checked: bool) -> Self {
+        Self::Switch(Switch { checked })
+    }
+
+    /// A horizontal progress bar; `compute` should return values in `0.0..=1.0`.
+    pub fn progress(compute: impl Fn() -> f32 + 'static) -> Self {
+        Self::Progress(Progress { compute: Rc::new(compute) })
+    }
+
+    /// A fixed-size, invisible gap along the enclosing stack's axis.
+    pub fn spacer(size: i32) -> Self {
+        Self::Spacer(Spacer { size })
+    }
+
+    /// A thin line spanning the enclosing stack's cross axis.
+    pub fn divider() -> Self {
+        Self::Divider(Divider)
     }
 
     pub fn style(self, property: StyleProperty) -> Self {
@@ -94,6 +142,126 @@ impl Component {
             .style(StyleProperty(Axis::Padding(Edge::Horizontal), StyleValue::Length(horizontal as f32)))
             .style(StyleProperty(Axis::Padding(Edge::Vertical), StyleValue::Length(vertical as f32)))
     }
+
+    fn with_handler(self, attach: RawAttach, callback: impl Fn(Event) + 'static) -> Self {
+        match self {
+            Component::WithHandlers { component, mut handlers } => {
+                handlers.push(Handler { attach, callback: Rc::new(callback) });
+                Component::WithHandlers { component, handlers }
+            }
+            other => Component::WithHandlers {
+                component: Box::new(other),
+                handlers: vec![Handler { attach, callback: Rc::new(callback) }],
+            },
+        }
+    }
+
+    /// Runs `action` on click. Equivalent to the `button { .. on_click: .. }`
+    /// macro sugar, but works on any component (a [`Checkbox`] label, an
+    /// [`Image`], a whole [`Stack`], ...), not just `Component::button`.
+    pub fn on_click(self, action: impl Fn() + 'static) -> Self {
+        self.with_handler(attach_click, move |_e| action())
+    }
+
+    /// Runs `action` on a press-and-hold (~500ms).
+    pub fn on_long_click(self, action: impl Fn() + 'static) -> Self {
+        self.with_handler(attach_long_click, move |_e| action())
+    }
+
+    /// Runs `handler` with the new state whenever a [`Checkbox`] or
+    /// [`Switch`] is toggled.
+    pub fn on_checked_change(self, handler: impl Fn(bool) + 'static) -> Self {
+        self.with_handler(attach_checked_change, move |e| {
+            if let Event::CheckedChanged(checked) = e {
+                handler(checked);
+            }
+        })
+    }
+
+    /// Runs `handler` with a [`TextInput`]'s full current text on every
+    /// keystroke - the ergonomic way to mirror what's typed into a
+    /// [`Signal`](crate::reactive::Signal) and show it elsewhere:
+    /// `Component::text_input("Name").on_text_changed(move |t| name.set(t))`.
+    pub fn on_text_changed(self, handler: impl Fn(String) + 'static) -> Self {
+        self.with_handler(attach_text_watcher, move |e| {
+            if let Event::TextChanged { text, .. } = e {
+                handler(text);
+            }
+        })
+    }
+
+    /// Runs `handler` with `true`/`false` when a component gains/loses
+    /// keyboard focus (most useful on a [`TextInput`]).
+    pub fn on_focus_change(self, handler: impl Fn(bool) + 'static) -> Self {
+        self.with_handler(attach_focus_change, move |e| {
+            if let Event::FocusChanged(focused) = e {
+                handler(focused);
+            }
+        })
+    }
+
+    /// Runs `handler` with the new `0.0..=1.0` value whenever a [`Progress`]
+    /// bar is clicked or dragged - it's a scrubber, not just a read-only
+    /// indicator, so this is how an app finds out the user moved it (persist
+    /// it back into whatever drives the bar's own `compute` closure, e.g.
+    /// `.on_value_changed(move |v| loading = v)`).
+    pub fn on_value_changed(self, handler: impl Fn(f32) + 'static) -> Self {
+        self.with_handler(attach_seek, move |e| {
+            if let Event::ValueChanged(value) = e {
+                handler(value);
+            }
+        })
+    }
+}
+
+type RawAttach = fn(*mut (), *const (), Rc<dyn Fn(Event)>);
+
+fn attach_click(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
+    unsafe {
+        let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
+        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        crate::platform::active_listeners::on_click::attach(backend, view, callback);
+    }
+}
+
+fn attach_long_click(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
+    unsafe {
+        let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
+        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        crate::platform::active_listeners::on_long_click::attach(backend, view, callback);
+    }
+}
+
+fn attach_checked_change(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
+    unsafe {
+        let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
+        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        crate::platform::active_listeners::on_checked_change::attach(backend, view, callback);
+    }
+}
+
+fn attach_text_watcher(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
+    unsafe {
+        let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
+        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        crate::platform::active_listeners::on_text_watcher::attach(backend, view, callback);
+    }
+}
+
+fn attach_focus_change(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
+    unsafe {
+        let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
+        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        crate::platform::active_listeners::on_focus_change::attach(backend, view, callback);
+    }
+}
+
+fn attach_seek(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
+    unsafe {
+        let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
+        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        crate::platform::active_listeners::on_seek::attach(backend, view, callback);
+    }
 }
 
 crate::style_methods! {
@@ -127,6 +295,26 @@ impl Component {
             Component::Stack(stack_comp) => {
                 let views = stack_comp.children.iter().map(|c| c.render(backend)).collect();
                 backend.create_stack(stack_comp.direction, stack_comp.spacing, views)
+            }
+            Component::TextInput(input_comp) => {
+                backend.create_text_input(&input_comp.placeholder, &input_comp.initial_text)
+            }
+            Component::Checkbox(checkbox_comp) => {
+                backend.create_checkbox(&checkbox_comp.label, checkbox_comp.checked)
+            }
+            Component::Switch(switch_comp) => {
+                backend.create_switch(switch_comp.checked)
+            }
+            Component::Progress(progress_comp) => {
+                let view = backend.create_progress((progress_comp.compute)());
+                reactive(backend, &view, progress_comp.compute.clone(), Update::SetProgress);
+                view
+            }
+            Component::Spacer(spacer_comp) => {
+                backend.create_spacer(spacer_comp.size)
+            }
+            Component::Divider(_) => {
+                backend.create_divider()
             }
             Component::WithHandlers { component, handlers } => {
                 let view = component.render(backend);

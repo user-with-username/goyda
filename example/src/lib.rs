@@ -76,10 +76,78 @@ pub fn counter_page() -> Component {
             .background(COLOR_MUTED)
             .px(4)
             .py(2)
+            .rounded(2),
+
+        button {
+            text: "Go to Widgets",
+            on_click: navigate("/widgets"),
+        }
+            .background(COLOR_PRIMARY)
+            .px(4)
+            .py(2)
             .rounded(2)
     }
     .p(6)
     .background(COLOR_DANGER)
+}
+
+#[page("/widgets")]
+pub fn widgets_page() -> Component {
+    let mut name = String::new();
+    let mut accepted = false;
+    let mut notifications = true;
+    let mut loading = 0.35_f32;
+
+    stack! {
+        direction: Vertical,
+        spacing: 16,
+
+        text { "Widgets demo" }
+            .color(COLOR_PRIMARY)
+            .font_size(FONT_SIZE_2XL),
+
+        Component::text_input("Type your name...")
+            .on_text_changed(move |text| name = text),
+
+        text { "Hello, ", name }
+            .color(COLOR_MUTED),
+
+        Component::checkbox("Accept terms", false)
+            .on_checked_change(move |checked| accepted = checked),
+
+        text { "Accepted: ", accepted }
+            .color(COLOR_MUTED),
+
+        Component::switch(true)
+            .on_checked_change(move |checked| notifications = checked),
+
+        text { "Notifications: ", notifications }
+            .color(COLOR_MUTED),
+
+        text { "Drag to set: ", loading }
+            .color(COLOR_MUTED),
+
+        Component::progress(move || loading)
+            .on_value_changed(move |value| loading = value),
+
+        Component::divider(),
+
+        Component::spacer(24),
+
+        text { "End of demo" }
+            .color(COLOR_MUTED),
+
+        button {
+            text: "Back",
+            on_click: navigate("/"),
+        }
+            .background(COLOR_MUTED)
+            .px(4)
+            .py(2)
+            .rounded(2)
+    }
+    .p(6)
+    .background(Color::Custom(0xFFFFFFFF))
 }
 
 #[page("/about")]

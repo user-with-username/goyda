@@ -464,13 +464,18 @@ impl BackendUpdater for AndroidUpdater {
                     Update::SetText(content) => {
                         let java_string = env.new_string(&content).unwrap();
                         let local_view = env.new_local_ref(view.global_ref.as_obj()).unwrap();
-                        
+
                         env.call_method(
                             &local_view,
                             "setText",
                             "(Ljava/lang/CharSequence;)V",
                             &[JValue::Object(&java_string)],
                         ).unwrap();
+                    }
+                    Update::SetProgress(value) => {
+                        let local_view = env.new_local_ref(view.global_ref.as_obj()).unwrap();
+                        let percent = (value.clamp(0.0, 1.0) * 100.0) as i32;
+                        env.call_method(&local_view, "setProgress", "(I)V", &[JValue::Int(percent)]).unwrap();
                     }
                 }
             }
@@ -557,6 +562,99 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
         self.env.call_method(&image_view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
 
         AndroidView { global_ref: Arc::new(self.env.new_global_ref(image_view).unwrap()) }
+    }
+
+    fn create_text_input(&mut self, placeholder: &str, initial_text: &str) -> Self::PlatformView {
+        let edit_text = self.env
+            .new_object("android/widget/EditText", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+
+        if !placeholder.is_empty() {
+            let java_placeholder = self.env.new_string(placeholder).unwrap();
+            self.env.call_method(&edit_text, "setHint", "(Ljava/lang/CharSequence;)V", &[JValue::Object(&java_placeholder)]).unwrap();
+        }
+        if !initial_text.is_empty() {
+            let java_text = self.env.new_string(initial_text).unwrap();
+            self.env.call_method(&edit_text, "setText", "(Ljava/lang/CharSequence;)V", &[JValue::Object(&java_text)]).unwrap();
+        }
+
+        let layout_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(-1), JValue::Int(-2)]).unwrap();
+        self.env.call_method(&edit_text, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
+
+        AndroidView { global_ref: Arc::new(self.env.new_global_ref(edit_text).unwrap()) }
+    }
+
+    fn create_checkbox(&mut self, label: &str, checked: bool) -> Self::PlatformView {
+        let checkbox = self.env
+            .new_object("android/widget/CheckBox", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+
+        let java_label = self.env.new_string(label).unwrap();
+        self.env.call_method(&checkbox, "setText", "(Ljava/lang/CharSequence;)V", &[JValue::Object(&java_label)]).unwrap();
+        self.env.call_method(&checkbox, "setChecked", "(Z)V", &[JValue::Bool(checked as u8)]).unwrap();
+
+        let layout_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(-2), JValue::Int(-2)]).unwrap();
+        self.env.call_method(&checkbox, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
+
+        AndroidView { global_ref: Arc::new(self.env.new_global_ref(checkbox).unwrap()) }
+    }
+
+    fn create_switch(&mut self, checked: bool) -> Self::PlatformView {
+        let switch = self.env
+            .new_object("android/widget/Switch", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+
+        self.env.call_method(&switch, "setChecked", "(Z)V", &[JValue::Bool(checked as u8)]).unwrap();
+
+        let layout_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(-2), JValue::Int(-2)]).unwrap();
+        self.env.call_method(&switch, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
+
+        AndroidView { global_ref: Arc::new(self.env.new_global_ref(switch).unwrap()) }
+    }
+
+    fn create_progress(&mut self, value: f32) -> Self::PlatformView {
+        // A scrubber, not just a read-only indicator - `SeekBar` gives
+        // touch-to-seek/drag for free (report changes to the app with
+        // `.on_value_changed(...)`, wired to `setOnSeekBarChangeListener` by
+        // the `seek` listener - see `crate::listeners`), which a plain
+        // `ProgressBar` doesn't support.
+        let seek_bar = self.env
+            .new_object("android/widget/SeekBar", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+
+        self.env.call_method(&seek_bar, "setMax", "(I)V", &[JValue::Int(100)]).unwrap();
+        let percent = (value.clamp(0.0, 1.0) * 100.0) as i32;
+        self.env.call_method(&seek_bar, "setProgress", "(I)V", &[JValue::Int(percent)]).unwrap();
+
+        let layout_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(-1), JValue::Int(-2)]).unwrap();
+        self.env.call_method(&seek_bar, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
+
+        AndroidView { global_ref: Arc::new(self.env.new_global_ref(seek_bar).unwrap()) }
+    }
+
+    fn create_spacer(&mut self, size: i32) -> Self::PlatformView {
+        let view = self.env
+            .new_object("android/view/View", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+
+        let scaled = (size * 3) as i32;
+        let layout_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(scaled), JValue::Int(scaled)]).unwrap();
+        self.env.call_method(&view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
+
+        AndroidView { global_ref: Arc::new(self.env.new_global_ref(view).unwrap()) }
+    }
+
+    fn create_divider(&mut self) -> Self::PlatformView {
+        let view = self.env
+            .new_object("android/view/View", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+
+        self.env.call_method(&view, "setBackgroundColor", "(I)V", &[JValue::Int(0xFFC8C8C8u32 as i32)]).unwrap();
+
+        let layout_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(-1), JValue::Int(3)]).unwrap();
+        self.env.call_method(&view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
+
+        AndroidView { global_ref: Arc::new(self.env.new_global_ref(view).unwrap()) }
     }
 
     fn create_stack(&mut self, direction: LayoutDirection, spacing: i32, children: Vec<Self::PlatformView>) -> Self::PlatformView {

@@ -202,21 +202,26 @@ define_listener! {
         ]
     },
 
-    // No native checkbox widget exists in this backend (see
-    // `windows/state.rs`'s `ControlKind`) - like the android/web arms above
-    // (which wire this to whatever control a `button { .. on_checked_change:
-    // .. }` happens to be attached to), this just toggles a per-control bool
-    // on every click.
+    // A real `Checkbox`/`Switch` already toggles (and redraws) its own
+    // `ControlState::checked` on click - see `register_click_to_toggle` in
+    // `windows/backend.rs`, registered before this hook (creation always
+    // precedes handler attachment), so by the time this runs for the same
+    // click it just needs to *read* the already-flipped value. Any other
+    // control a `button { .. on_checked_change: .. }` happens to be attached
+    // to (like the android/web arms above tolerate too) has no such
+    // built-in behavior, so this does the toggling itself in that case.
     windows {
         custom = |_backend, view, callback| {
-            use std::cell::Cell;
             use windows_sys::Win32::UI::WindowsAndMessaging::WM_LBUTTONUP;
 
-            let checked = std::rc::Rc::new(Cell::new(false));
-            crate::windows::register_raw_hook(view.hwnd, std::rc::Rc::new(move |msg, _wparam, _lparam| {
+            let hwnd = view.hwnd;
+            crate::windows::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, _wparam, _lparam| {
                 if msg == WM_LBUTTONUP {
-                    let now = !checked.get();
-                    checked.set(now);
+                    let now = if crate::windows::is_self_toggling(hwnd) {
+                        crate::windows::is_checked(hwnd)
+                    } else {
+                        crate::windows::toggle_checked(hwnd)
+                    };
                     callback(Event::CheckedChanged(now));
                 }
             }));
@@ -350,12 +355,15 @@ define_listener! {
         ]
     },
 
-    // No editable text control exists in this backend yet (see
-    // `windows/state.rs`'s `ControlKind`), so this accumulates `WM_CHAR`
-    // straight onto whatever control it's attached to via a per-`HWND`
-    // buffer (`windows::append_text_buffer`) - same approximation the web
-    // arm above already accepts (`start`/`before` always 0, `count` is the
-    // buffer's new length, not the edit size).
+    // A real `TextInput` already accumulates its own typed characters (and
+    // handles backspace) - see `create_text_input` in `windows/backend.rs`,
+    // registered before this hook (creation always precedes handler
+    // attachment), so by the time this runs for the same `WM_CHAR` it just
+    // needs to *read* the already-updated buffer. Any other control a
+    // `.on_text_changed(...)` happens to be attached to has no such
+    // built-in behavior, so this appends to its buffer itself in that case -
+    // same approximation the web arm above already accepts (`start`/`before`
+    // always 0, `count` is the buffer's new length, not the edit size).
     windows {
         custom = |_backend, view, callback| {
             use windows_sys::Win32::UI::WindowsAndMessaging::WM_CHAR;
@@ -365,13 +373,93 @@ define_listener! {
                 if msg != WM_CHAR {
                     return;
                 }
-                let Some(ch) = char::from_u32(wparam as u32) else { return };
-                if ch.is_control() {
-                    return;
-                }
-                let text = crate::windows::append_text_buffer(hwnd, ch);
+
+                let text = if crate::windows::is_text_input(hwnd) {
+                    crate::windows::current_text_buffer(hwnd)
+                } else if wparam == 0x08 {
+                    crate::windows::backspace_text_buffer(hwnd)
+                } else {
+                    let Some(ch) = char::from_u32(wparam as u32) else { return };
+                    if ch.is_control() {
+                        return;
+                    }
+                    crate::windows::append_text_buffer(hwnd, ch)
+                };
+
                 let count = text.chars().count();
                 callback(Event::TextChanged { text, start: 0, before: 0, count });
+            }));
+        }
+    },
+}
+
+define_listener! {
+    mod_name = seek,
+    callback = dyn Fn(Event),
+
+    android {
+        class_name = "goyda/internal/GoydaSeekBarListener",
+        interface_name = "android/widget/SeekBar$OnSeekBarChangeListener",
+        setter = "setOnSeekBarChangeListener",
+        methods = [
+            {
+                name = "onProgressChanged",
+                jni_sig = (("android/widget/SeekBar", int, int) -> void),
+                native_fn = native_on_progress_changed(env, this, _seekbar: JObject<'a>, progress: jint, _from_user: jint) -> () {
+                    if let Some(cb) = self::get_callback(&mut env, &this) {
+                        cb(Event::ValueChanged(progress as f32 / 100.0));
+                    }
+                }
+            },
+            {
+                name = "onStartTrackingTouch",
+                jni_sig = (("android/widget/SeekBar") -> void),
+                native_fn = native_on_start_tracking_touch(env, _this, _seekbar: JObject<'a>) -> () {}
+            },
+            {
+                name = "onStopTrackingTouch",
+                jni_sig = (("android/widget/SeekBar") -> void),
+                native_fn = native_on_stop_tracking_touch(env, _this, _seekbar: JObject<'a>) -> () {}
+            }
+        ]
+    },
+
+    web {
+        events = [
+            {
+                dom_event = "input",
+                handler = |event: web_sys::Event, callback| {
+                    let value = event
+                        .target()
+                        .and_then(|t| t.dyn_into::<web_sys::HtmlInputElement>().ok())
+                        .and_then(|el| el.value().parse::<f32>().ok())
+                        .unwrap_or(0.0);
+                    callback(Event::ValueChanged(value));
+                }
+            }
+        ]
+    },
+
+    // A real `Progress` already updates its own value on click/drag - see
+    // `create_progress` in `windows/backend.rs`, registered before this hook
+    // (creation always precedes handler attachment), so by the time this
+    // runs for the same click/drag message it just needs to *read* the
+    // already-updated value. `WM_MOUSEMOVE` only counts as a drag when the
+    // left button is actually held (`MK_LBUTTON`), matching the intrinsic
+    // hook's own gate - otherwise every passing mouse movement would fire a
+    // spurious `ValueChanged`.
+    windows {
+        custom = |_backend, view, callback| {
+            use windows_sys::Win32::UI::WindowsAndMessaging::{WM_LBUTTONDOWN, WM_MOUSEMOVE};
+
+            const MK_LBUTTON: usize = 0x0001;
+
+            let hwnd = view.hwnd;
+            crate::windows::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, wparam, _lparam| {
+                let is_seek_event = msg == WM_LBUTTONDOWN || (msg == WM_MOUSEMOVE && wparam & MK_LBUTTON != 0);
+                if is_seek_event {
+                    callback(Event::ValueChanged(crate::windows::current_progress(hwnd)));
+                }
             }));
         }
     },
