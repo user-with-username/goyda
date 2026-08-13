@@ -9,9 +9,10 @@
 
 use std::ffi::c_void;
 
+use goyda_macros::sig;
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::strings::JNIString;
-use jni::sys::{jint, JNI_VERSION_1_6};
+use jni::sys::{jboolean, jint, JNI_FALSE, JNI_TRUE, JNI_VERSION_1_6};
 use jni::{JNIEnv, JavaVM, NativeMethod};
 
 use crate::android::backend::{AndroidBackend, JVM};
@@ -20,7 +21,7 @@ use crate::find_page;
 
 fn native_init(mut env: JNIEnv, _class: JClass, root: JObject) {
     let context = env
-        .call_method(&root, "getContext", "()Landroid/content/Context;", &[])
+        .call_method(&root, "getContext", sig!(() -> "android/content/Context"), &[])
         .unwrap()
         .l()
         .unwrap();
@@ -32,13 +33,19 @@ fn native_init(mut env: JNIEnv, _class: JClass, root: JObject) {
     let view = component.render(&mut android_backend);
 
     let view_jobject = view.as_jobject(&mut env);
-    env.call_method(&root, "addView", "(Landroid/view/View;)V", &[JValue::Object(&view_jobject)])
+    env.call_method(&root, "addView", sig!(("android/view/View") -> void), &[JValue::Object(&view_jobject)])
         .unwrap();
 
     let global_root = env.new_global_ref(&root).expect("GlobalRef failed");
     let global_context = env.new_global_ref(&context).expect("GlobalRef failed");
 
-    let bridge = AndroidBridge { root: global_root, context: global_context, ui_tree: component };
+    let bridge = AndroidBridge {
+        root: global_root,
+        context: global_context,
+        ui_tree: component,
+        current_path: "/".to_string(),
+        back_stack: Vec::new(),
+    };
     let _ = BRIDGE.set(std::sync::Mutex::new(bridge));
 }
 
@@ -65,10 +72,45 @@ pub fn navigate(path: &str) {
     let view_jobject = view.as_jobject(&mut env);
 
     let root = env.new_local_ref(bridge.root.as_obj()).expect("local ref failed");
-    env.call_method(&root, "removeAllViews", "()V", &[]).unwrap();
-    env.call_method(&root, "addView", "(Landroid/view/View;)V", &[JValue::Object(&view_jobject)]).unwrap();
+    env.call_method(&root, "removeAllViews", sig!(() -> void), &[]).unwrap();
+    env.call_method(&root, "addView", sig!(("android/view/View") -> void), &[JValue::Object(&view_jobject)]).unwrap();
 
     bridge.ui_tree = component;
+    let previous_path = std::mem::replace(&mut bridge.current_path, path.to_string());
+    bridge.back_stack.push(previous_path);
+}
+
+/// Pops the in-app back stack built up by [`navigate`] and re-renders
+/// whichever page was on top of it, the same way the browser's back button
+/// re-renders on `popstate` for the web target (see `crate::web::mod`) -
+/// Android has no OS-level page stack of its own to lean on (single
+/// `Activity`, no fragment back stack), so `MainActivity`'s `onBackPressed`
+/// calls this via `nativeBack` instead. Returns `false` when the stack is
+/// empty so the caller falls back to the platform default (finishing the
+/// `Activity`).
+fn native_back(mut env: JNIEnv, _this: JObject) -> jboolean {
+    let Some(bridge_lock) = BRIDGE.get() else { return JNI_FALSE };
+    let mut bridge = bridge_lock.lock().unwrap_or_else(|e| e.into_inner());
+
+    let Some(previous_path) = bridge.back_stack.pop() else { return JNI_FALSE };
+
+    let Some(page) = find_page(&previous_path) else { return JNI_FALSE };
+
+    let context = env.new_local_ref(bridge.context.as_obj()).expect("local ref failed");
+    let component = (page.factory)();
+
+    let mut android_backend = AndroidBackend::new(&mut env, &context);
+    let view = component.render(&mut android_backend);
+    let view_jobject = view.as_jobject(&mut env);
+
+    let root = env.new_local_ref(bridge.root.as_obj()).expect("local ref failed");
+    env.call_method(&root, "removeAllViews", sig!(() -> void), &[]).unwrap();
+    env.call_method(&root, "addView", sig!(("android/view/View") -> void), &[JValue::Object(&view_jobject)]).unwrap();
+
+    bridge.ui_tree = component;
+    bridge.current_path = previous_path;
+
+    JNI_TRUE
 }
 
 /// Finds the Java/Kotlin class that called into native code (by walking the
@@ -88,13 +130,13 @@ pub extern "C" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
 
     let thread_class = env.find_class("java/lang/Thread").unwrap();
     let current_thread = env
-        .call_static_method(&thread_class, "currentThread", "()Ljava/lang/Thread;", &[])
+        .call_static_method(&thread_class, "currentThread", sig!(() -> "java/lang/Thread"), &[])
         .unwrap()
         .l()
         .unwrap();
 
     let stack_trace_object = env
-        .call_method(&current_thread, "getStackTrace", "()[Ljava/lang/StackTraceElement;", &[])
+        .call_method(&current_thread, "getStackTrace", sig!(() -> ["java/lang/StackTraceElement"]), &[])
         .unwrap()
         .l()
         .unwrap();
@@ -107,7 +149,7 @@ pub extern "C" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
     for i in 0..length {
         let element = env.get_object_array_element(&stack_trace, i).unwrap();
         let class_name_object: JString =
-            env.call_method(&element, "getClassName", "()Ljava/lang/String;", &[]).unwrap().l().unwrap().into();
+            env.call_method(&element, "getClassName", sig!(() -> "java/lang/String"), &[]).unwrap().l().unwrap().into();
         let class_str: String = env.get_string(&class_name_object).unwrap().into();
 
         if !class_str.starts_with("java.")
@@ -122,12 +164,19 @@ pub extern "C" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
 
     if let Some(class_path) = caller_class_name {
         if let Ok(class) = env.find_class(&class_path) {
-            let method = NativeMethod {
-                name: JNIString::from("nativeInit"),
-                sig: JNIString::from("(Landroid/view/ViewGroup;)V"),
-                fn_ptr: native_init as *mut c_void,
-            };
-            env.register_native_methods(&class, &[method]).expect("Dynamic registration failed");
+            let methods = [
+                NativeMethod {
+                    name: JNIString::from("nativeInit"),
+                    sig: JNIString::from(sig!(("android/view/ViewGroup") -> void)),
+                    fn_ptr: native_init as *mut c_void,
+                },
+                NativeMethod {
+                    name: JNIString::from("nativeBack"),
+                    sig: JNIString::from(sig!(() -> boolean)),
+                    fn_ptr: native_back as *mut c_void,
+                },
+            ];
+            env.register_native_methods(&class, &methods).expect("Dynamic registration failed");
         }
     }
 

@@ -15,6 +15,8 @@ pub struct AndroidBridge {
     pub root: GlobalRef,
     pub context: GlobalRef,
     pub ui_tree: crate::Component,
+    pub current_path: String,
+    pub back_stack: Vec<String>,
 }
 
 /// # Safety

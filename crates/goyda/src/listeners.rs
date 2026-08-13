@@ -73,7 +73,7 @@ define_listener! {
         methods = [
             {
                 name = "onLongClick",
-                jni_sig = (("android/view/View") -> int),
+                jni_sig = (("android/view/View") -> boolean),
                 native_fn = native_on_long_click(env, this, _view: JObject<'a>) -> jboolean {
                     if let Some(cb) = self::get_callback(&mut env, &this) {
                         cb(Event::LongClick);
@@ -176,7 +176,7 @@ define_listener! {
         methods = [
             {
                 name = "onCheckedChanged",
-                jni_sig = (("android/widget/CompoundButton", int) -> void),
+                jni_sig = (("android/widget/CompoundButton", boolean) -> void),
                 native_fn = native_on_checked_changed(env, this, _view: JObject<'a>, checked: jboolean) -> () {
                     if let Some(cb) = self::get_callback(&mut env, &this) {
                         cb(Event::CheckedChanged(checked != 0));
@@ -307,10 +307,19 @@ define_listener! {
                 jni_sig = (("java/lang/CharSequence", int, int, int) -> void),
                 native_fn = native_on_text_changed(env, this, s: JObject<'a>, start: jint, before: jint, count: jint) -> () {
                     if let Some(cb) = self::get_callback(&mut env, &this) {
-                        let jstr = ::jni::objects::JString::from(s);
-                        let text: String = env.get_string(&jstr)
-                            .map(|s| s.into())
-                            .unwrap_or_default();
+                        // `s` is the `Editable`/`SpannableStringBuilder` backing the
+                        // `EditText`, not a `java.lang.String` - casting it straight
+                        // to `JString` and reading it silently failed (caught by
+                        // `unwrap_or_default()`), always reporting empty text.
+                        // `CharSequence.toString()` is the correct way to read any
+                        // `CharSequence` implementation's contents.
+                        let text: String = match env.call_method(&s, "toString", ::goyda_macros::sig!(() -> "java/lang/String"), &[]).ok().and_then(|v| v.l().ok()) {
+                            Some(obj) => {
+                                let jstr = ::jni::objects::JString::from(obj);
+                                env.get_string(&jstr).map(|s| s.into()).unwrap_or_default()
+                            }
+                            None => String::new(),
+                        };
                         cb(Event::TextChanged {
                             text,
                             start: start as usize,
@@ -404,8 +413,8 @@ define_listener! {
         methods = [
             {
                 name = "onProgressChanged",
-                jni_sig = (("android/widget/SeekBar", int, int) -> void),
-                native_fn = native_on_progress_changed(env, this, _seekbar: JObject<'a>, progress: jint, _from_user: jint) -> () {
+                jni_sig = (("android/widget/SeekBar", int, boolean) -> void),
+                native_fn = native_on_progress_changed(env, this, _seekbar: JObject<'a>, progress: jint, _from_user: jboolean) -> () {
                     if let Some(cb) = self::get_callback(&mut env, &this) {
                         cb(Event::ValueChanged(progress as f32 / 100.0));
                     }

@@ -10,6 +10,7 @@ public class Goyda {
     }
 
     public native void nativeInit(ViewGroup root);
+    public native boolean nativeBack();
 
     public void start(Activity activity) {
         FrameLayout layout = new FrameLayout(activity);

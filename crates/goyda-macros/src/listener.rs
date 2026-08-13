@@ -109,7 +109,7 @@ macro_rules! __define_android_listener {
                     backend.env.call_method(
                         &local_view,
                         $setter_method,
-                        concat!("(L", $interface_name, ";)V"),
+                        $crate::sig!(($interface_name) -> void),
                         &[::jni::objects::JValue::Object(&listener)],
                     ).unwrap();
                 }
@@ -137,12 +137,12 @@ macro_rules! __define_android_listener {
                     let boxed: Box<Rc<$callback_ty>> = Box::new(callback);
                     let ptr = Box::into_raw(boxed) as jlong;
                     let class = env.find_class(CLASS_NAME).unwrap();
-                    env.new_object(class, "(J)V", &[JValue::Long(ptr)])
+                    env.new_object(class, $crate::sig!((long) -> void), &[JValue::Long(ptr)])
                         .expect("no listener obj")
                 }
 
                 pub fn get_callback<'a>(env: &mut JNIEnv<'a>, this: &JObject<'a>) -> Option<Rc<$callback_ty>> {
-                    let ptr_val = env.get_field(this, "nativePtr", "J").ok()?.j().ok()?;
+                    let ptr_val = env.get_field(this, "nativePtr", $crate::sig_ret!(long)).ok()?.j().ok()?;
                     if ptr_val == 0 { return None; }
                     let cb: &Rc<$callback_ty> = unsafe { &*(ptr_val as *const Rc<$callback_ty>) };
                     Some(cb.clone())
