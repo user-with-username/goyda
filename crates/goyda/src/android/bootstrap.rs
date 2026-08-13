@@ -9,7 +9,7 @@
 
 use std::ffi::c_void;
 
-use goyda_macros::{jcall, sig, sig_ret};
+use goyda_macros::{jcall, jnew, new_widget, set_layout_params, sig, sig_ret};
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::strings::JNIString;
 use jni::sys::{jboolean, jint, JNI_FALSE, JNI_TRUE, JNI_VERSION_1_6};
@@ -46,6 +46,36 @@ fn detect_theme_mode(env: &mut JNIEnv, context: &JObject) -> ThemeMode {
     }
 }
 
+/// Wraps `content` (a page's already-rendered root `View`) in a vertically
+/// scrolling `ScrollView`, so a page taller than the screen scrolls instead
+/// of silently clipping at the bottom edge - the built-in
+/// `Component::scroll_view` isn't reused here since its children loop sizes
+/// each child `WRAP_CONTENT` and center-gravity (meant for a scrollable
+/// *list* of independently-sized items), which would shrink a full-width
+/// page down to its narrowest natural width instead of keeping it filling
+/// the screen; `content` keeps `MATCH_PARENT` width here and only trades
+/// `MATCH_PARENT` height for `WRAP_CONTENT`, since only *that* lets it grow
+/// past the viewport for the `ScrollView` to scroll over.
+///
+/// `WRAP_CONTENT` cuts both ways though: a page *shorter* than the screen
+/// now only paints its own background over its own (short) height, leaving
+/// the `ScrollView`'s unstyled remainder showing through as a plain black/
+/// white band underneath - `setFillViewport(true)` is the standard fix,
+/// stretching `content` to fill the viewport whenever its natural height
+/// is the smaller one, while still leaving it free to grow past the
+/// viewport (and scroll) whenever its natural height is the bigger one.
+fn wrap_scrollable<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, content: JObject<'a>) -> JObject<'a> {
+    let content_params = jnew!(env, "android/widget/FrameLayout$LayoutParams", ((int, int) -> void), [JValue::Int(-1), JValue::Int(-2)]);
+    jcall!(env, &content, "setLayoutParams", (("android/view/ViewGroup$LayoutParams") -> void), [JValue::Object(&content_params)]).unwrap();
+
+    let scroll_view = new_widget!(env, "android/widget/ScrollView", context);
+    jcall!(env, &scroll_view, "setFillViewport", ((boolean) -> void), [JValue::Bool(1)]).unwrap();
+    jcall!(env, &scroll_view, "addView", (("android/view/View") -> void), [JValue::Object(&content)]).unwrap();
+    set_layout_params!(env, &scroll_view, -1, -1);
+
+    scroll_view
+}
+
 /// Renders `page` into `bridge`'s root, replacing whatever was mounted
 /// before - the shared body of [`navigate`], [`native_back`], and
 /// [`rerender`], which differ only in how they get to "here's the page to
@@ -58,10 +88,11 @@ fn swap_page(env: &mut JNIEnv, bridge: &mut AndroidBridge, page: &crate::Page) {
     let mut android_backend = AndroidBackend::new(env, &context);
     let view = component.render(&mut android_backend);
     let view_jobject = view.as_jobject(env);
+    let scrollable = wrap_scrollable(env, &context, view_jobject);
 
     let root = env.new_local_ref(bridge.root.as_obj()).expect("local ref failed");
     env.call_method(&root, "removeAllViews", sig!(() -> void), &[]).unwrap();
-    env.call_method(&root, "addView", sig!(("android/view/View") -> void), &[JValue::Object(&view_jobject)]).unwrap();
+    env.call_method(&root, "addView", sig!(("android/view/View") -> void), &[JValue::Object(&scrollable)]).unwrap();
 
     bridge.ui_tree = component;
 }
@@ -82,7 +113,8 @@ fn native_init(mut env: JNIEnv, _class: JClass, root: JObject) {
     let view = component.render(&mut android_backend);
 
     let view_jobject = view.as_jobject(&mut env);
-    env.call_method(&root, "addView", sig!(("android/view/View") -> void), &[JValue::Object(&view_jobject)])
+    let scrollable = wrap_scrollable(&mut env, &context, view_jobject);
+    env.call_method(&root, "addView", sig!(("android/view/View") -> void), &[JValue::Object(&scrollable)])
         .unwrap();
 
     let global_root = env.new_global_ref(&root).expect("GlobalRef failed");

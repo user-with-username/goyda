@@ -1,4 +1,28 @@
-use goyda::prelude::{page, stack, Component, Color, Align, LayoutDirection, asset, navigate, theme};
+use goyda::prelude::{page, component, stack, Component, Color, Align, LayoutDirection, asset, navigate, theme};
+
+// `#[component]` is `#[page]` minus the route: same `let mut` -> reactive
+// rewrite, just a plain function returning `Component` that can be called
+// wherever one's expected - like `back_button("/")` below, reused across
+// three pages instead of repeating the same `button { ... }` block each
+// time. `direction: Vertical` here is this component's own call - it's
+// wrapping a single child, unrelated to whatever direction the page that
+// embeds it is using for its own top-level `stack!`.
+#[component]
+fn back_button(label: &'static str, to: &'static str) -> Component {
+    stack! {
+        direction: Vertical,
+        spacing: 0,
+
+        button {
+            text: label,
+            on_click: navigate(to),
+        }
+            .background(COLOR_MUTED())
+            .px(4)
+            .py(2)
+            .rounded(2)
+    }
+}
 
 // Three variants, not just light/dark - `theme!` generates `Light`/`Dark`/
 // `Solarized` as usize constants (declaration order) plus a `next_theme()`
@@ -183,14 +207,7 @@ pub fn styles_page() -> Component {
             .border_color(COLOR_MUTED())
             .border_width(1),
 
-        button {
-            text: "Back",
-            on_click: navigate("/"),
-        }
-            .background(COLOR_MUTED())
-            .px(4)
-            .py(2)
-            .rounded(2)
+        back_button("Back", "/")
     }
     .p(6)
     .background(Color::WHITE)
@@ -249,14 +266,7 @@ pub fn widgets_page() -> Component {
         text { "End of demo" }
             .color(COLOR_MUTED()),
 
-        button {
-            text: "Back",
-            on_click: navigate("/"),
-        }
-            .background(COLOR_MUTED())
-            .px(4)
-            .py(2)
-            .rounded(2)
+        back_button("Back", "/")
     }
     .p(6)
     .background(Color::Custom(0xFFFFFFFF))

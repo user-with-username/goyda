@@ -192,7 +192,7 @@ use windows_sys::Win32::Graphics::Gdi::{
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleW;
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-use crate::{find_page, Component, Page};
+use crate::{find_page, Component, LayoutDirection, Page};
 
 const ROOT_CLASS_NAME: &str = "GoydaRoot\0";
 
@@ -304,7 +304,14 @@ fn register_classes(hinstance: HINSTANCE) {
 /// client area - switching pages resizing the window back to some default
 /// would undo a resize the user did on purpose.
 fn mount(hinstance: HINSTANCE, root: HWND, page: &Page, fit_window: bool) {
-    let component = (page.factory)();
+    // Wrapped in a scroll view so a page taller than the window scrolls
+    // instead of silently clipping at the bottom edge - `AlignItems`
+    // defaults to `Stretch` (see `state::ControlState::default`), so the
+    // wrapped page still fills the full window width same as it did
+    // unwrapped, only trading a `MATCH_PARENT`-equivalent height for one
+    // that can grow past the viewport, same reasoning as android's own
+    // `wrap_scrollable` in `android::bootstrap`.
+    let component = Component::scroll_view(LayoutDirection::Vertical, 0, vec![(page.factory)()]);
     let mut backend = WindowsBackend::new(hinstance, root);
     let view = component.render(&mut backend);
 

@@ -64,13 +64,29 @@ pub fn relayout(hwnd: HWND, width: i32, height: i32) {
         })
         .collect();
 
-    let main_sizes: Vec<i32> = sizes
+    let mut main_sizes: Vec<i32> = sizes
         .iter()
         .map(|((w, h), _)| match direction {
             LayoutDirection::Horizontal => *w,
             LayoutDirection::Vertical => *h,
         })
         .collect();
+
+    // A scrollable panel with exactly one child (e.g. the whole-page wrap
+    // `windows::mod::mount` builds so a page taller than the window can
+    // scroll - see its own doc comment) needs that child to still fill the
+    // viewport when it's the *shorter* one, the same "grow to fill, but
+    // only shrink to natural size, never below the viewport" Android gets
+    // for free from `ScrollView.setFillViewport(true)` (see
+    // `android::bootstrap::wrap_scrollable`) - without this, a page
+    // shorter than the window only paints its own background over its own
+    // short height, leaving a plain unstyled band underneath. A multi-child
+    // scrollable list (e.g. `styles_page`'s scrollable row list) is left
+    // alone: stretching every item to fill the viewport would break the
+    // list, not just the empty-space case this is actually fixing.
+    if scrollable && main_sizes.len() == 1 {
+        main_sizes[0] = main_sizes[0].max(content_main);
+    }
 
     let n = children.len();
     let total_natural_main: i32 = main_sizes.iter().sum::<i32>() + spacing * (n.saturating_sub(1)) as i32;

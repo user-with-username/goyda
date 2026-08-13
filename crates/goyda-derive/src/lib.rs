@@ -10,19 +10,57 @@ use syn::{parse_macro_input, ItemFn, LitStr};
 use syn::visit_mut::VisitMut;
 use transformer::{ReactivityGraphTransformer, UiMacroTransformer};
 
+/// Rewrites `let mut x = ...;` into `Signal`/`Memo` state and every
+/// `stack!`/`parse_children!` use of a variable that got that treatment
+/// into the matching `.get()`/`.set()`/`.update()`/`.call()` - see
+/// [`ReactivityGraphTransformer`] and [`UiMacroTransformer`]. Shared by
+/// `#[page]` (which also registers a route) and `#[component]` (which
+/// doesn't - see its own doc comment for why that's the only difference):
+/// a page *is* a component, just one with a path attached, so both need
+/// exactly this same rewrite and nothing else.
+fn transform_reactive_fn(input_fn: &mut ItemFn) {
+    let mut graph_transformer = ReactivityGraphTransformer::new();
+    graph_transformer.build_dependency_graph(input_fn);
+
+    let mut_vars_cache = graph_transformer.all_mut_vars.clone();
+    graph_transformer.visit_item_fn_mut(input_fn);
+
+    let mut ui_transformer = UiMacroTransformer { all_mut_vars: mut_vars_cache };
+    ui_transformer.visit_item_fn_mut(input_fn);
+}
+
+/// A reusable, composable piece of UI: an ordinary function - taking
+/// whatever arguments it needs (a label, an initial value, a callback,
+/// ...) - that builds and returns a [`Component`](::goyda::Component),
+/// usually via a `stack! { direction: ..., ... }` of its own (though
+/// nothing requires one - returning a single `Component::text(...)`
+/// directly is just as valid). `direction` itself is never this macro's
+/// concern: it's an ordinary argument to whichever `stack!` call the
+/// component's body makes, exactly as it would be in a `#[page]` - a
+/// component embedded as one child among a parent's own `stack!` only
+/// hands over *that* child's subtree, never influencing the parent's own
+/// layout direction or vice versa.
+///
+/// Unlike [`page`], `#[component]` takes no route and registers nothing -
+/// call the function directly, anywhere a `Component` is expected: as a
+/// page's whole return value, or (most commonly) as one entry in another
+/// `stack!`'s children list, e.g. `my_button_group("Save", on_save)` right
+/// alongside `text { ... }`/`button { ... }` - `parse_children!`'s
+/// catch-all arm already accepts any `Component`-valued expression there,
+/// so no special wiring is needed to nest one.
+#[proc_macro_attribute]
+pub fn component(_attr: TokenStream, item: TokenStream) -> TokenStream {
+    let mut input_fn = parse_macro_input!(item as ItemFn);
+    transform_reactive_fn(&mut input_fn);
+    TokenStream::from(quote! { #input_fn })
+}
+
 #[proc_macro_attribute]
 pub fn page(attr: TokenStream, item: TokenStream) -> TokenStream {
     let route_path = parse_macro_input!(attr as LitStr);
     let mut input_fn = parse_macro_input!(item as ItemFn);
 
-    let mut graph_transformer = ReactivityGraphTransformer::new();
-    graph_transformer.build_dependency_graph(&input_fn);
-    
-    let mut_vars_cache = graph_transformer.all_mut_vars.clone();
-    graph_transformer.visit_item_fn_mut(&mut input_fn);
-
-    let mut ui_transformer = UiMacroTransformer { all_mut_vars: mut_vars_cache };
-    ui_transformer.visit_item_fn_mut(&mut input_fn);
+    transform_reactive_fn(&mut input_fn);
 
     let fn_name = &input_fn.sig.ident;
     let module_name = syn::Ident::new(&format!("__goyda_page_container_{}", fn_name), fn_name.span());

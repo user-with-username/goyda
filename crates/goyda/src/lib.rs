@@ -25,7 +25,7 @@ pub use crate::platform::{navigate, rerender};
 pub use crate::core::theme::{ThemeMode, theme_index, set_theme, cycle_theme};
 
 pub mod prelude {
-    pub use goyda_derive::page;
+    pub use goyda_derive::{page, component};
     pub use crate::{stack, parse_children, asset, asset_ref, theme};
     pub use crate::components::{Component, LayoutDirection, Color, Modifier, Asset, Align};
     pub use crate::reactive::{Signal, Memo};
