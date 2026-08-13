@@ -2,7 +2,17 @@ use windows_sys::Win32::Foundation::{COLORREF, HWND, RECT};
 use windows_sys::Win32::Graphics::Gdi::*;
 use windows_sys::Win32::UI::WindowsAndMessaging::GetParent;
 
+use crate::components::Align;
+
 use super::state::{client_rect, with_state, ControlKind};
+
+fn text_align_flag(align: Align) -> u32 {
+    match align {
+        Align::Start | Align::Stretch | Align::SpaceBetween => DT_LEFT,
+        Align::Center => DT_CENTER,
+        Align::End => DT_RIGHT,
+    }
+}
 
 /// The color that would show through if `hwnd` had no background of its
 /// own - the nearest ancestor's `background_color`, or plain white if none
@@ -38,7 +48,7 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
         // rect drawn first, in the same border color if set (else a plain
         // gray), so it peeks out from behind the control.
         if state.shadow > 0 {
-            let color = state.border_color.unwrap_or(0x00C8_C8C8);
+            let color = state.shadow_color.or(state.border_color).unwrap_or(0x00C8_C8C8);
             let brush = CreateSolidBrush(color);
             let shadow_rect =
                 RECT { left: rect.left + state.shadow, top: rect.top + state.shadow, right: rect.right + state.shadow, bottom: rect.bottom + state.shadow };
@@ -91,25 +101,51 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                     SelectObject(hdc, font);
                 }
                 SetBkMode(hdc, TRANSPARENT as i32);
+                SetTextCharacterExtra(hdc, state.letter_spacing);
                 SetTextColor(hdc, state.text_color.unwrap_or(0x0000_0000));
                 let wide: Vec<u16> = text.encode_utf16().chain(std::iter::once(0)).collect();
                 let mut r = content_rect;
-                DrawTextW(hdc, wide.as_ptr(), -1, &mut r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                let ellipsis_flag = if state.ellipsis { DT_END_ELLIPSIS } else { 0 };
+                DrawTextW(hdc, wide.as_ptr(), -1, &mut r, text_align_flag(state.text_align) | DT_VCENTER | DT_SINGLELINE | ellipsis_flag);
             }
-            ControlKind::TextInput { text, placeholder } => {
+            ControlKind::TextInput { text, placeholder, multiline } => {
                 if let Some(font) = state.font {
                     SelectObject(hdc, font);
                 }
                 SetBkMode(hdc, TRANSPARENT as i32);
+                SetTextCharacterExtra(hdc, state.letter_spacing);
                 let (shown, color) = if text.is_empty() {
                     (placeholder.as_str(), 0x00A0_A0A0)
                 } else {
                     (text.as_str(), state.text_color.unwrap_or(0x0000_0000))
                 };
                 SetTextColor(hdc, color);
-                let wide: Vec<u16> = shown.encode_utf16().chain(std::iter::once(0)).collect();
                 let mut r = content_rect;
-                DrawTextW(hdc, wide.as_ptr(), -1, &mut r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                if *multiline {
+                    if let Some(lh) = state.line_height {
+                        // Custom line spacing needs each line drawn (and
+                        // stepped down `lh` px) by hand - GDI's own
+                        // `DT_WORDBREAK` layout engine has no line-height
+                        // parameter of its own. Trade-off: lines only break
+                        // on real `\n`s in this mode (no auto word-wrap),
+                        // since we don't control where the engine would
+                        // have wrapped otherwise.
+                        let mut y = r.top;
+                        for line in shown.split('\n') {
+                            let wide_line: Vec<u16> = line.encode_utf16().chain(std::iter::once(0)).collect();
+                            let mut line_rect = RECT { left: r.left, top: y, right: r.right, bottom: y + lh };
+                            DrawTextW(hdc, wide_line.as_ptr(), -1, &mut line_rect, text_align_flag(state.text_align) | DT_TOP | DT_SINGLELINE | DT_NOCLIP);
+                            y += lh;
+                        }
+                    } else {
+                        let wide: Vec<u16> = shown.encode_utf16().chain(std::iter::once(0)).collect();
+                        DrawTextW(hdc, wide.as_ptr(), -1, &mut r, text_align_flag(state.text_align) | DT_TOP | DT_WORDBREAK);
+                    }
+                } else {
+                    let wide: Vec<u16> = shown.encode_utf16().chain(std::iter::once(0)).collect();
+                    let ellipsis_flag = if state.ellipsis { DT_END_ELLIPSIS } else { 0 };
+                    DrawTextW(hdc, wide.as_ptr(), -1, &mut r, text_align_flag(state.text_align) | DT_VCENTER | DT_SINGLELINE | ellipsis_flag);
+                }
             }
             ControlKind::Checkbox { label } => {
                 let box_size = 16;
@@ -134,6 +170,45 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                     LineTo(hdc, box_rect.left + 13, box_rect.top + 4);
                     SelectObject(hdc, old);
                     DeleteObject(check_pen);
+                }
+
+                if !label.is_empty() {
+                    if let Some(font) = state.font {
+                        SelectObject(hdc, font);
+                    }
+                    SetBkMode(hdc, TRANSPARENT as i32);
+                    SetTextColor(hdc, state.text_color.unwrap_or(0x0000_0000));
+                    let wide: Vec<u16> = label.encode_utf16().chain(std::iter::once(0)).collect();
+                    let mut r = RECT { left: box_rect.right + 8, top: rect.top, right: rect.right, bottom: rect.bottom };
+                    DrawTextW(hdc, wide.as_ptr(), -1, &mut r, DT_LEFT | DT_VCENTER | DT_SINGLELINE);
+                }
+            }
+            ControlKind::RadioButton { label, .. } => {
+                let box_size = 16;
+                let box_top = rect.top + (rect.bottom - rect.top - box_size) / 2;
+                let box_rect = RECT { left: rect.left, top: box_top, right: rect.left + box_size, bottom: box_top + box_size };
+
+                let border_pen = CreatePen(PS_SOLID as i32, 1, 0x0090_9090);
+                let old_pen = SelectObject(hdc, border_pen);
+                let fill_brush = CreateSolidBrush(0x00FF_FFFF);
+                let old_brush = SelectObject(hdc, fill_brush);
+                Ellipse(hdc, box_rect.left, box_rect.top, box_rect.right, box_rect.bottom);
+                SelectObject(hdc, old_pen);
+                SelectObject(hdc, old_brush);
+                DeleteObject(border_pen);
+                DeleteObject(fill_brush);
+
+                if state.checked {
+                    let inset = 4;
+                    let dot_brush = CreateSolidBrush(0x00D0_7800);
+                    let pen = CreatePen(PS_NULL as i32, 0, 0);
+                    let old_pen = SelectObject(hdc, pen);
+                    let old_brush = SelectObject(hdc, dot_brush);
+                    Ellipse(hdc, box_rect.left + inset, box_rect.top + inset, box_rect.right - inset, box_rect.bottom - inset);
+                    SelectObject(hdc, old_pen);
+                    SelectObject(hdc, old_brush);
+                    DeleteObject(dot_brush);
+                    DeleteObject(pen);
                 }
 
                 if !label.is_empty() {
@@ -224,7 +299,12 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                 SelectObject(mem_dc, old);
                 DeleteDC(mem_dc);
             }
-            ControlKind::Image { bitmap: None, .. } | ControlKind::Panel { .. } | ControlKind::Spacer | ControlKind::Divider => {}
+            ControlKind::Image { bitmap: None, .. }
+            | ControlKind::Panel { .. }
+            | ControlKind::ScrollView { .. }
+            | ControlKind::Overlay { .. }
+            | ControlKind::Spacer
+            | ControlKind::Divider => {}
         }
     });
 }

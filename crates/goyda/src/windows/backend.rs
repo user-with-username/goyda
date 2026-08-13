@@ -1,5 +1,5 @@
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, WPARAM};
-use windows_sys::Win32::Graphics::Gdi::{GetDC, GetTextExtentPoint32W, InvalidateRect, ReleaseDC, SelectObject, HFONT};
+use windows_sys::Win32::Graphics::Gdi::{GetDC, GetTextExtentPoint32W, InvalidateRect, ReleaseDC, SelectObject, SetTextCharacterExtra, HFONT};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, SetFocus};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
@@ -9,6 +9,7 @@ use crate::core::{Backend, BackendUpdater};
 
 use super::font;
 use super::image::decode_to_bitmap;
+use super::layout;
 use super::state::{self, ControlKind, ControlState, Edges};
 
 const DEFAULT_FONT_SIZE: i32 = 16;
@@ -22,9 +23,16 @@ fn wide(s: &str) -> Vec<u16> {
 }
 
 fn measure_text(text: &str, font: HFONT) -> (i32, i32) {
+    measure_text_with_spacing(text, font, 0)
+}
+
+fn measure_text_with_spacing(text: &str, font: HFONT, letter_spacing: i32) -> (i32, i32) {
     unsafe {
         let hdc = GetDC(std::ptr::null_mut());
         let old = SelectObject(hdc, font as _);
+        if letter_spacing != 0 {
+            SetTextCharacterExtra(hdc, letter_spacing);
+        }
         let w = wide(text);
         let mut size = windows_sys::Win32::Foundation::SIZE::default();
         GetTextExtentPoint32W(hdc, w.as_ptr(), (w.len() - 1) as i32, &mut size);
@@ -73,6 +81,8 @@ impl BackendUpdater for WindowsUpdater {
 /// freshly-created field with no placeholder/text would measure to zero
 /// width and be invisible.
 const TEXT_INPUT_MIN_WIDTH: i32 = 150;
+const TEXTAREA_MIN_WIDTH: i32 = 250;
+const TEXTAREA_MIN_HEIGHT: i32 = 80;
 const CHECKBOX_BOX_SIZE: i32 = 16;
 const SWITCH_SIZE: (i32, i32) = (40, 22);
 const PROGRESS_HEIGHT: i32 = 8;
@@ -82,20 +92,23 @@ const DIVIDER_THICKNESS: i32 = 1;
 fn measure_text_for(hwnd: HWND) -> (i32, i32) {
     state::with_state(hwnd, |s| {
         let is_button = matches!(s.kind, ControlKind::Button(_));
+        let multiline = matches!(s.kind, ControlKind::TextInput { multiline: true, .. });
         let is_input = matches!(s.kind, ControlKind::TextInput { .. });
         let text = match &s.kind {
             ControlKind::Text(t) | ControlKind::Button(t) => t.clone(),
-            ControlKind::TextInput { text, placeholder } => {
+            ControlKind::TextInput { text, placeholder, .. } => {
                 if text.is_empty() { placeholder.clone() } else { text.clone() }
             }
             _ => return (0, 0),
         };
         let f = s.font.unwrap_or_else(|| font::default_font(DEFAULT_FONT_SIZE));
-        let (w, h) = measure_text(&text, f);
+        let (w, h) = measure_text_with_spacing(&text, f, s.letter_spacing);
         let pad = if is_button { &BUTTON_PADDING } else { &s.padding };
         let total_w = w + pad.left + pad.right;
         let total_h = h + pad.top + pad.bottom;
-        if is_input {
+        if multiline {
+            (total_w.max(TEXTAREA_MIN_WIDTH), total_h.max(TEXTAREA_MIN_HEIGHT))
+        } else if is_input {
             (total_w.max(TEXT_INPUT_MIN_WIDTH), total_h.max(24))
         } else {
             (total_w, total_h)
@@ -146,7 +159,12 @@ impl WindowsBackend {
                 0,
                 class.as_ptr(),
                 std::ptr::null(),
-                WS_CHILD | WS_VISIBLE,
+                // `WS_CLIPSIBLINGS`: without it, a sibling's own `WM_PAINT`
+                // fill can paint straight over a *higher z-order* sibling
+                // that overlaps it (nothing before `Overlay` needed this -
+                // ordinary `Panel`/`ScrollView` children never overlap, but
+                // `Overlay` children intentionally do).
+                WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS,
                 0,
                 0,
                 0,
@@ -159,6 +177,93 @@ impl WindowsBackend {
         };
         state::insert_state(hwnd, ControlState::new(kind));
         WindowsView { hwnd }
+    }
+
+    /// Shared by `create_stack`/`create_scroll_view` - `kind` (already
+    /// built with `children`'s `HWND`s) picks which of the two, everything
+    /// else (reparenting, measuring the content-sized extent, delegating
+    /// actual child positions to `relayout`) is identical between them.
+    fn build_stack_control(&mut self, kind: ControlKind, direction: LayoutDirection, spacing: i32, children: Vec<WindowsView>) -> WindowsView {
+        let panel = self.create_control(kind);
+
+        for child in &children {
+            unsafe {
+                SetParent(child.hwnd, panel.hwnd);
+            }
+        }
+
+        let sizes: Vec<(i32, i32)> = children.iter().map(|c| state::natural_size(c.hwnd)).collect();
+        let mut total_main = 0i32;
+        let mut cross_max = 0i32;
+        for (i, (w, h)) in sizes.iter().enumerate() {
+            let main = if matches!(direction, LayoutDirection::Horizontal) { *w } else { *h };
+            let cross = if matches!(direction, LayoutDirection::Horizontal) { *h } else { *w };
+            total_main += main + if i > 0 { spacing } else { 0 };
+            cross_max = cross_max.max(cross);
+        }
+
+        let (pw, ph) = match direction {
+            LayoutDirection::Horizontal => (total_main, cross_max),
+            LayoutDirection::Vertical => (cross_max, total_main),
+        };
+
+        unsafe {
+            MoveWindow(panel.hwnd, 0, 0, pw.max(0), ph.max(0), 1);
+        }
+        state::with_state(panel.hwnd, |s| s.natural_size = (pw, ph));
+
+        layout::relayout(panel.hwnd, pw, ph);
+
+        panel
+    }
+
+    /// Shared by `create_text_input`/`create_textarea` - `multiline` picks
+    /// between the two, everything else (click-to-focus, character
+    /// accumulation/backspace) is identical.
+    fn build_text_input(&mut self, placeholder: &str, initial_text: &str, multiline: bool) -> WindowsView {
+        let view = self.create_control(ControlKind::TextInput { text: initial_text.to_string(), placeholder: placeholder.to_string(), multiline });
+        state::with_state(view.hwnd, |s| {
+            s.text_buffer = initial_text.to_string();
+            s.background_color = Some(state::to_colorref(0xFFFFFFFF));
+            s.border_color = Some(state::to_colorref(0xFF969696));
+            s.border_width = 1;
+            s.border_radius = 2;
+            s.padding = Edges { left: 8, top: 4, right: 8, bottom: 4 };
+        });
+        let (w, h) = measure_text_for(view.hwnd);
+        state::with_state(view.hwnd, |s| s.natural_size = (w, h));
+
+        // Built-in interactivity, matching what a real `<input>`/`<textarea>`/
+        // `EditText` gives for free on the other two backends: click to
+        // focus (nothing else on this backend ever calls `SetFocus`, so
+        // without this a freshly-created field could never receive
+        // `WM_CHAR` at all), then accumulate typed characters (Enter as a
+        // newline when `multiline`, backspace always) straight into this
+        // control's own buffer - independent of whether the app attaches
+        // `.on_text_changed(...)`, which only needs to *observe* this, not
+        // drive it (see `crate::listeners`'s `text_watcher` arm).
+        let hwnd = view.hwnd;
+        state::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, wparam, _lparam| unsafe {
+            match msg {
+                WM_LBUTTONDOWN => {
+                    SetFocus(hwnd);
+                }
+                WM_CHAR => {
+                    if wparam == 0x08 {
+                        crate::windows::backspace_text_buffer(hwnd);
+                    } else if multiline && (wparam == 0x0D || wparam == 0x0A) {
+                        crate::windows::append_text_buffer(hwnd, '\n');
+                    } else if let Some(ch) = char::from_u32(wparam as u32) {
+                        if !ch.is_control() {
+                            crate::windows::append_text_buffer(hwnd, ch);
+                        }
+                    }
+                }
+                _ => {}
+            }
+        }));
+
+        view
     }
 }
 
@@ -199,46 +304,11 @@ impl Backend for WindowsBackend {
     }
 
     fn create_text_input(&mut self, placeholder: &str, initial_text: &str) -> Self::PlatformView {
-        let view = self.create_control(ControlKind::TextInput { text: initial_text.to_string(), placeholder: placeholder.to_string() });
-        state::with_state(view.hwnd, |s| {
-            s.text_buffer = initial_text.to_string();
-            s.background_color = Some(state::to_colorref(0xFFFFFFFF));
-            s.border_color = Some(state::to_colorref(0xFF969696));
-            s.border_width = 1;
-            s.border_radius = 2;
-            s.padding = Edges { left: 8, top: 4, right: 8, bottom: 4 };
-        });
-        let (w, h) = measure_text_for(view.hwnd);
-        state::with_state(view.hwnd, |s| s.natural_size = (w, h));
+        self.build_text_input(placeholder, initial_text, false)
+    }
 
-        // Built-in interactivity, matching what a real `<input>`/`EditText`
-        // gives for free on the other two backends: click to focus (nothing
-        // else on this backend ever calls `SetFocus`, so without this a
-        // freshly-created field could never receive `WM_CHAR` at all), then
-        // accumulate typed characters (and handle backspace) straight into
-        // this control's own buffer - independent of whether the app
-        // attaches `.on_text_changed(...)`, which only needs to *observe*
-        // this, not drive it (see `crate::listeners`'s `text_watcher` arm).
-        let hwnd = view.hwnd;
-        state::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, wparam, _lparam| unsafe {
-            match msg {
-                WM_LBUTTONDOWN => {
-                    SetFocus(hwnd);
-                }
-                WM_CHAR => {
-                    if wparam == 0x08 {
-                        crate::windows::backspace_text_buffer(hwnd);
-                    } else if let Some(ch) = char::from_u32(wparam as u32) {
-                        if !ch.is_control() {
-                            crate::windows::append_text_buffer(hwnd, ch);
-                        }
-                    }
-                }
-                _ => {}
-            }
-        }));
-
-        view
+    fn create_textarea(&mut self, placeholder: &str, initial_text: &str) -> Self::PlatformView {
+        self.build_text_input(placeholder, initial_text, true)
     }
 
     fn create_checkbox(&mut self, label: &str, checked: bool) -> Self::PlatformView {
@@ -253,6 +323,34 @@ impl Backend for WindowsBackend {
             s.natural_size = (w, h);
         });
         register_click_to_toggle(view.hwnd);
+        view
+    }
+
+    fn create_radio_button(&mut self, group: &str, label: &str, selected: bool) -> Self::PlatformView {
+        let view = self.create_control(ControlKind::RadioButton { label: label.to_string() });
+        let font = font::default_font(DEFAULT_FONT_SIZE);
+        let (label_w, label_h) = if label.is_empty() { (0, 0) } else { measure_text(label, font) };
+        let gap = if label.is_empty() { 0 } else { 8 };
+        let w = CHECKBOX_BOX_SIZE + gap + label_w;
+        let h = CHECKBOX_BOX_SIZE.max(label_h);
+        state::with_state(view.hwnd, |s| {
+            s.checked = selected;
+            s.natural_size = (w, h);
+        });
+
+        crate::windows::register_radio(view.hwnd, group);
+        if selected {
+            crate::windows::select_radio(view.hwnd, group);
+        }
+
+        let hwnd = view.hwnd;
+        let group_owned = group.to_string();
+        state::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, _wparam, _lparam| {
+            if msg == WM_LBUTTONUP {
+                crate::windows::select_radio(hwnd, &group_owned);
+            }
+        }));
+
         view
     }
 
@@ -318,43 +416,82 @@ impl Backend for WindowsBackend {
     }
 
     fn create_stack(&mut self, direction: LayoutDirection, spacing: i32, children: Vec<Self::PlatformView>) -> Self::PlatformView {
-        let panel = self.create_control(ControlKind::Panel {
+        self.build_stack_control(
+            ControlKind::Panel { direction, spacing, children: children.iter().map(|c| c.hwnd).collect() },
             direction,
             spacing,
-            children: children.iter().map(|c| c.hwnd).collect(),
-        });
+            children,
+        )
+    }
 
-        let sizes: Vec<(i32, i32)> = children.iter().map(|c| state::natural_size(c.hwnd)).collect();
-        let mut cursor = 0i32;
-        let mut cross_max = 0i32;
+    fn create_scroll_view(&mut self, direction: LayoutDirection, spacing: i32, children: Vec<Self::PlatformView>) -> Self::PlatformView {
+        let view = self.build_stack_control(
+            ControlKind::ScrollView { direction, spacing, children: children.iter().map(|c| c.hwnd).collect() },
+            direction,
+            spacing,
+            children,
+        );
 
-        for (child, (w, h)) in children.iter().zip(sizes.iter()) {
-            unsafe {
-                SetParent(child.hwnd, panel.hwnd);
-                let (x, y) = match direction {
-                    LayoutDirection::Horizontal => (cursor, 0),
-                    LayoutDirection::Vertical => (0, cursor),
-                };
-                MoveWindow(child.hwnd, x, y, *w, *h, 1);
+        // No native scrollable widget exists in this backend (see
+        // `windows/state.rs`'s `ControlKind`), so scrolling is just this
+        // control's own main-axis offset (`ControlState::scroll_offset`),
+        // nudged by the mouse wheel and applied by `relayout` (see
+        // `crate::windows::scroll_by`) - child `HWND`s scrolled outside
+        // this control's own bounds are clipped for free, the same way any
+        // child window is always clipped to its parent's client area.
+        let hwnd = view.hwnd;
+        state::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, wparam, _lparam| {
+            if msg == WM_MOUSEWHEEL {
+                let notches = ((wparam >> 16) as i16 as i32) / WHEEL_DELTA as i32;
+                crate::windows::scroll_by(hwnd, -notches * 40);
             }
-            let main = if matches!(direction, LayoutDirection::Horizontal) { *w } else { *h };
-            let cross = if matches!(direction, LayoutDirection::Horizontal) { *h } else { *w };
-            cursor += main + spacing;
-            cross_max = cross_max.max(cross);
+        }));
+
+        view
+    }
+
+    fn create_overlay(&mut self, children: Vec<Self::PlatformView>) -> Self::PlatformView {
+        let overlay = self.create_control(ControlKind::Overlay { children: children.iter().map(|c| c.hwnd).collect() });
+
+        for child in &children {
+            unsafe {
+                SetParent(child.hwnd, overlay.hwnd);
+            }
         }
 
-        let total_main = (cursor - spacing).max(0);
-        let (pw, ph) = match direction {
-            LayoutDirection::Horizontal => (total_main, cross_max),
-            LayoutDirection::Vertical => (cross_max, total_main),
-        };
+        // Painted back-to-front, so a higher `z_index` (or, for ties, a
+        // later position in `children`) ends up drawn last - i.e. on top -
+        // matching how DOM/view child order already works as the default
+        // stacking rule when `z_index` is left unset.
+        let mut ordered: Vec<(i32, HWND)> = children
+            .iter()
+            .enumerate()
+            .map(|(i, c)| {
+                let z = state::with_state(c.hwnd, |s| s.z_index).unwrap_or(0);
+                (z * (children.len() as i32 + 1) + i as i32, c.hwnd)
+            })
+            .collect();
+        ordered.sort_by_key(|(key, _)| *key);
+
+        let mut max_w = 0;
+        let mut max_h = 0;
+        for (_, hwnd) in &ordered {
+            let (x, y) = state::with_state(*hwnd, |s| (s.offset_x, s.offset_y)).unwrap_or((0, 0));
+            let (w, h) = state::natural_size(*hwnd);
+            unsafe {
+                MoveWindow(*hwnd, x, y, w.max(0), h.max(0), 1);
+                SetWindowPos(*hwnd, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE);
+            }
+            max_w = max_w.max(x + w);
+            max_h = max_h.max(y + h);
+        }
 
         unsafe {
-            MoveWindow(panel.hwnd, 0, 0, pw, ph, 1);
+            MoveWindow(overlay.hwnd, 0, 0, max_w.max(0), max_h.max(0), 1);
         }
-        state::with_state(panel.hwnd, |s| s.natural_size = (pw, ph));
+        state::with_state(overlay.hwnd, |s| s.natural_size = (max_w, max_h));
 
-        panel
+        overlay
     }
 
     fn apply_style(&mut self, view: &Self::PlatformView, style: StyleProperty) {
@@ -390,9 +527,76 @@ impl Backend for WindowsBackend {
             (Axis::Opacity, StyleValue::Number(_)) => {}
             (Axis::FontSize, v) => {
                 if let Some(len) = goyda_utils::style::resolve_length(v) {
-                    s.font = Some(font::default_font(len as i32));
+                    s.font_size = len as i32;
+                    s.font = Some(font::styled_font(s.font_size, s.bold, s.italic, s.underline, s.strikethrough));
                 }
             }
+            // `.bold()`/`.italic()`/`.underline()`/`.strikethrough()`
+            // rebuild from the tracked `(size, bold, italic, underline,
+            // strikethrough)` tuple - see `ControlState::font_size`. This
+            // means they override (rather than compose with) a custom
+            // `.font(asset)` family, since a custom family's
+            // weight/slant/decoration isn't tracked here - a known
+            // limitation, not a bug.
+            (Axis::FontWeight, StyleValue::Bool(bold)) => {
+                s.bold = *bold;
+                s.font = Some(font::styled_font(s.font_size, s.bold, s.italic, s.underline, s.strikethrough));
+            }
+            (Axis::FontStyle, StyleValue::Bool(italic)) => {
+                s.italic = *italic;
+                s.font = Some(font::styled_font(s.font_size, s.bold, s.italic, s.underline, s.strikethrough));
+            }
+            (Axis::Underline, StyleValue::Bool(underline)) => {
+                s.underline = *underline;
+                s.font = Some(font::styled_font(s.font_size, s.bold, s.italic, s.underline, s.strikethrough));
+            }
+            (Axis::Strikethrough, StyleValue::Bool(strikethrough)) => {
+                s.strikethrough = *strikethrough;
+                s.font = Some(font::styled_font(s.font_size, s.bold, s.italic, s.underline, s.strikethrough));
+            }
+            (Axis::TextAlign, StyleValue::Align(a)) => s.text_align = *a,
+            (Axis::Width, v) => {
+                if let Some(len) = goyda_utils::style::resolve_length(v) {
+                    s.explicit_width = Some(len as i32);
+                }
+            }
+            (Axis::Height, v) => {
+                if let Some(len) = goyda_utils::style::resolve_length(v) {
+                    s.explicit_height = Some(len as i32);
+                }
+            }
+            (Axis::AlignItems, StyleValue::Align(a)) => s.align_items = *a,
+            (Axis::JustifyContent, StyleValue::Align(a)) => s.justify_content = *a,
+            (Axis::LineHeight, v) => {
+                if let Some(len) = goyda_utils::style::resolve_length(v) {
+                    s.line_height = Some(len as i32);
+                }
+            }
+            (Axis::LetterSpacing, v) => {
+                if let Some(len) = goyda_utils::style::resolve_length(v) {
+                    s.letter_spacing = len as i32;
+                }
+            }
+            (Axis::TextOverflowEllipsis, StyleValue::Bool(v)) => s.ellipsis = *v,
+            // `Axis::Clip` is a no-op here - see its doc comment: child
+            // `HWND`s are already clipped to their parent's bounds
+            // unconditionally, this backend has no way to opt back into
+            // `overflow: visible` even if asked.
+            (Axis::Clip, StyleValue::Bool(_)) => {}
+            (Axis::ShadowColor, StyleValue::Color(c)) => {
+                s.shadow_color = Some(state::to_colorref(goyda_utils::color::argb(*c)));
+            }
+            (Axis::OffsetX, v) => {
+                if let Some(len) = goyda_utils::style::resolve_length(v) {
+                    s.offset_x = len as i32;
+                }
+            }
+            (Axis::OffsetY, v) => {
+                if let Some(len) = goyda_utils::style::resolve_length(v) {
+                    s.offset_y = len as i32;
+                }
+            }
+            (Axis::ZIndex, StyleValue::Number(z)) => s.z_index = *z as i32,
             (Axis::FontFamily, StyleValue::Asset(asset)) => {
                 let size = DEFAULT_FONT_SIZE;
                 if let Some(bytes) = asset.bytes() {
@@ -420,11 +624,23 @@ impl Backend for WindowsBackend {
             _ => {}
         });
 
-        if matches!(axis, Axis::Padding(_) | Axis::FontSize) {
+        if matches!(axis, Axis::Padding(_) | Axis::FontSize | Axis::FontWeight | Axis::FontStyle | Axis::LetterSpacing) {
             let (w, h) = measure_text_for(hwnd);
             if w > 0 || h > 0 {
                 state::with_state(hwnd, |s| s.natural_size = (w, h));
             }
+        }
+
+        if matches!(axis, Axis::Width | Axis::Height) {
+            let (w, h) = state::natural_size(hwnd);
+            unsafe {
+                SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0, w.max(0), h.max(0), SWP_NOMOVE | SWP_NOZORDER);
+            }
+        }
+
+        if matches!(axis, Axis::AlignItems | Axis::JustifyContent) {
+            let rect = state::client_rect(hwnd);
+            layout::relayout(hwnd, rect.right, rect.bottom);
         }
 
         if let (Axis::Opacity, StyleValue::Number(alpha)) = (&axis, &value) {

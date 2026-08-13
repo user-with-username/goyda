@@ -7,6 +7,13 @@ pub enum Color {
     GREEN,
     RED,
     BACKGROUND,
+    WHITE,
+    BLACK,
+    TRANSPARENT,
+    BLUE,
+    ORANGE,
+    YELLOW,
+    PURPLE,
     Custom(u32),
 }
 
@@ -21,6 +28,13 @@ pub fn argb(color: Color) -> u32 {
         Color::GREEN => 0xFF4CAF50,
         Color::RED => 0xFFF44336,
         Color::BACKGROUND => 0xFFFFFFFF,
+        Color::WHITE => 0xFFFFFFFF,
+        Color::BLACK => 0xFF000000,
+        Color::TRANSPARENT => 0x00000000,
+        Color::BLUE => 0xFF2196F3,
+        Color::ORANGE => 0xFFFF9800,
+        Color::YELLOW => 0xFFFFEB3B,
+        Color::PURPLE => 0xFF9C27B0,
         Color::Custom(hex) => hex,
     }
 }

@@ -4,7 +4,7 @@ use std::collections::HashMap;
 use windows_sys::Win32::Graphics::Gdi::*;
 
 thread_local! {
-    static DEFAULT_FONTS: RefCell<HashMap<i32, HFONT>> = RefCell::new(HashMap::new());
+    static DEFAULT_FONTS: RefCell<HashMap<(i32, bool, bool, bool, bool), HFONT>> = RefCell::new(HashMap::new());
     static NAMED_FONTS: RefCell<HashMap<(String, i32), HFONT>> = RefCell::new(HashMap::new());
 }
 
@@ -12,17 +12,17 @@ fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-fn create_font(height: i32, face: &str) -> HFONT {
+fn create_font(height: i32, face: &str, bold: bool, italic: bool, underline: bool, strikethrough: bool) -> HFONT {
     unsafe {
         CreateFontW(
             -height,
             0,
             0,
             0,
-            FW_NORMAL as i32,
-            0,
-            0,
-            0,
+            if bold { FW_BOLD as i32 } else { FW_NORMAL as i32 },
+            italic as u32,
+            underline as u32,
+            strikethrough as u32,
             DEFAULT_CHARSET as u32,
             OUT_DEFAULT_PRECIS as u32,
             CLIP_DEFAULT_PRECIS as u32,
@@ -33,10 +33,20 @@ fn create_font(height: i32, face: &str) -> HFONT {
     }
 }
 
-/// The default UI font at a given pixel size, cached per size.
+/// The default UI font at a given pixel size (normal weight, upright),
+/// cached per size. Equivalent to `styled_font(size_px, false, false, false, false)`.
 pub fn default_font(size_px: i32) -> HFONT {
+    styled_font(size_px, false, false, false, false)
+}
+
+/// The default UI font at a given pixel size/weight/slant/decoration,
+/// cached per `(size, bold, italic, underline, strikethrough)` combination.
+pub fn styled_font(size_px: i32, bold: bool, italic: bool, underline: bool, strikethrough: bool) -> HFONT {
     DEFAULT_FONTS.with(|cache| {
-        *cache.borrow_mut().entry(size_px).or_insert_with(|| create_font(size_px, "Segoe UI"))
+        *cache
+            .borrow_mut()
+            .entry((size_px, bold, italic, underline, strikethrough))
+            .or_insert_with(|| create_font(size_px, "Segoe UI", bold, italic, underline, strikethrough))
     })
 }
 
@@ -61,7 +71,7 @@ pub fn font_from_bytes(bytes: &[u8], size_px: i32) -> Option<HFONT> {
         }
     }
 
-    let font = create_font(size_px, &family);
+    let font = create_font(size_px, &family, false, false, false, false);
     NAMED_FONTS.with(|c| c.borrow_mut().insert((family, size_px), font));
     Some(font)
 }

@@ -29,8 +29,63 @@ pub enum Axis {
     Opacity,
     FontSize,
     FontFamily,
+    FontWeight,
+    FontStyle,
+    TextAlign,
     Padding(Edge),
     Margin(Edge),
+    Width,
+    Height,
+    /// Cross-axis alignment of a [`Stack`](https://docs.rs/goyda)'s
+    /// children (`Start`/`Center`/`End`/`Stretch` - `Stretch` is the
+    /// existing default every backend already applies when this axis isn't
+    /// set).
+    AlignItems,
+    /// Main-axis distribution of a `Stack`'s children (`Start`/`Center`/
+    /// `End`/`SpaceBetween`).
+    JustifyContent,
+    LineHeight,
+    LetterSpacing,
+    Underline,
+    Strikethrough,
+    /// Truncates to a single line with a trailing "…" instead of wrapping/
+    /// overflowing.
+    TextOverflowEllipsis,
+    /// Forces content that overflows this component's bounds to be clipped
+    /// - mostly matters on the web backend, where the CSS default is
+    /// `overflow: visible`; android/windows already clip a control's
+    /// children to its own bounds unconditionally (see
+    /// `crate::components::ScrollView`'s doc comment), so this is a no-op
+    /// there.
+    Clip,
+    /// A secondary shadow color (paired with [`Axis::Shadow`]'s size) -
+    /// defaults to a neutral gray when unset.
+    ShadowColor,
+    /// Only meaningful on a direct child of an
+    /// [`Overlay`](https://docs.rs/goyda) - horizontal/vertical offset from
+    /// the overlay's top-left corner, taking the child out of normal flow
+    /// (`position: absolute` in CSS terms).
+    OffsetX,
+    OffsetY,
+    /// Only meaningful on a direct child of an `Overlay` - paint order
+    /// among overlay siblings (higher draws on top). Ties break by
+    /// insertion order, matching how DOM/view stacking already works when
+    /// this is left unset.
+    ZIndex,
+}
+
+/// Shared by [`Axis::TextAlign`], [`Axis::AlignItems`], and
+/// [`Axis::JustifyContent`] - not every variant is meaningful for every
+/// axis (`TextAlign` never produces `Stretch`/`SpaceBetween`, e.g.), but one
+/// enum keeps the style value type small instead of one bespoke enum per
+/// axis.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub enum Align {
+    Start,
+    Center,
+    End,
+    Stretch,
+    SpaceBetween,
 }
 
 #[derive(Debug, Clone)]
@@ -40,6 +95,8 @@ pub enum StyleValue {
     Spacing(usize),
     Number(f32),
     Asset(Asset),
+    Bool(bool),
+    Align(Align),
 }
 
 #[derive(Debug, Clone)]

@@ -4,7 +4,7 @@ use std::collections::HashSet;
 use wasm_bindgen::JsCast;
 use web_sys::{Document, Element, HtmlElement};
 
-use crate::components::{Asset, Axis, Color, Edge, LayoutDirection, StyleProperty, StyleValue};
+use crate::components::{Align, Asset, Axis, Color, Edge, LayoutDirection, StyleProperty, StyleValue};
 use crate::core::events::Update;
 use crate::core::{Backend, BackendUpdater};
 
@@ -179,6 +179,11 @@ fn apply_style_to_element(element: &Element, StyleProperty(axis, value): &StyleP
         }
         Axis::Shadow => {
             if let Some(v) = resolve_length(value) {
+                // Stashed in a data attribute so a later `.shadow_color(...)`
+                // (see `Axis::ShadowColor` below) can re-issue `box-shadow`
+                // at the same size with a different color, without needing
+                // to parse the shorthand back out of the inline style.
+                let _ = element.set_attribute("data-shadow-px", &v.to_string());
                 set_style(element, "box-shadow", &format!("0 {v}px {v}px rgba(0, 0, 0, 0.25)"));
             }
         }
@@ -208,6 +213,128 @@ fn apply_style_to_element(element: &Element, StyleProperty(axis, value): &StyleP
                 apply_edge(element, "margin", *edge, v);
             }
         }
+        Axis::Width => {
+            if let Some(v) = resolve_length(value) {
+                set_style(element, "width", &format!("{v}px"));
+                set_style(element, "flex-shrink", "0");
+            }
+        }
+        Axis::Height => {
+            if let Some(v) = resolve_length(value) {
+                set_style(element, "height", &format!("{v}px"));
+                set_style(element, "flex-shrink", "0");
+            }
+        }
+        Axis::FontWeight => {
+            if let StyleValue::Bool(bold) = value {
+                set_style(element, "font-weight", if *bold { "bold" } else { "normal" });
+            }
+        }
+        Axis::FontStyle => {
+            if let StyleValue::Bool(italic) = value {
+                set_style(element, "font-style", if *italic { "italic" } else { "normal" });
+            }
+        }
+        Axis::TextAlign => {
+            if let StyleValue::Align(a) = value {
+                set_style(element, "text-align", css_text_align(*a));
+            }
+        }
+        Axis::AlignItems => {
+            if let StyleValue::Align(a) = value {
+                set_style(element, "align-items", css_align_items(*a));
+            }
+        }
+        Axis::JustifyContent => {
+            if let StyleValue::Align(a) = value {
+                set_style(element, "justify-content", css_justify_content(*a));
+            }
+        }
+        Axis::LineHeight => {
+            if let Some(v) = resolve_length(value) {
+                set_style(element, "line-height", &format!("{v}px"));
+            }
+        }
+        Axis::LetterSpacing => {
+            if let Some(v) = resolve_length(value) {
+                set_style(element, "letter-spacing", &format!("{v}px"));
+            }
+        }
+        Axis::Underline => {
+            if let StyleValue::Bool(v) = value {
+                set_style(element, "text-decoration", if *v { "underline" } else { "none" });
+            }
+        }
+        Axis::Strikethrough => {
+            if let StyleValue::Bool(v) = value {
+                set_style(element, "text-decoration", if *v { "line-through" } else { "none" });
+            }
+        }
+        Axis::TextOverflowEllipsis => {
+            if let StyleValue::Bool(true) = value {
+                set_style(element, "overflow", "hidden");
+                set_style(element, "white-space", "nowrap");
+                set_style(element, "text-overflow", "ellipsis");
+            }
+        }
+        Axis::Clip => {
+            if let StyleValue::Bool(v) = value {
+                set_style(element, "overflow", if *v { "hidden" } else { "visible" });
+            }
+        }
+        Axis::ShadowColor => {
+            // `.shadow(px)` must run first (declaration order = application
+            // order for a `Styled` chain) so `data-shadow-px` is already
+            // stashed - see `Axis::Shadow` above.
+            if let StyleValue::Color(c) = value {
+                let shadow_px: f32 = element.get_attribute("data-shadow-px").and_then(|s| s.parse().ok()).unwrap_or(4.0);
+                set_style(element, "box-shadow", &format!("0 {shadow_px}px {shadow_px}px {}", css_color(*c)));
+            }
+        }
+        Axis::OffsetX => {
+            if let Some(v) = resolve_length(value) {
+                set_style(element, "left", &format!("{v}px"));
+            }
+        }
+        Axis::OffsetY => {
+            if let Some(v) = resolve_length(value) {
+                set_style(element, "top", &format!("{v}px"));
+            }
+        }
+        Axis::ZIndex => {
+            if let StyleValue::Number(z) = value {
+                set_style(element, "z-index", &(*z as i32).to_string());
+            }
+        }
+    }
+}
+
+fn css_text_align(align: Align) -> &'static str {
+    match align {
+        Align::Start => "left",
+        Align::Center => "center",
+        Align::End => "right",
+        Align::Stretch | Align::SpaceBetween => "left",
+    }
+}
+
+fn css_align_items(align: Align) -> &'static str {
+    match align {
+        Align::Start => "flex-start",
+        Align::Center => "center",
+        Align::End => "flex-end",
+        Align::Stretch => "stretch",
+        Align::SpaceBetween => "stretch",
+    }
+}
+
+fn css_justify_content(align: Align) -> &'static str {
+    match align {
+        Align::Start => "flex-start",
+        Align::Center => "center",
+        Align::End => "flex-end",
+        Align::Stretch => "flex-start",
+        Align::SpaceBetween => "space-between",
     }
 }
 
@@ -320,6 +447,19 @@ impl Backend for WebBackend {
         WebView { element }
     }
 
+    fn create_textarea(&mut self, placeholder: &str, initial_text: &str) -> Self::PlatformView {
+        let element = document()
+            .create_element("textarea")
+            .expect("goyda(web): failed to create <textarea>");
+        let _ = element.set_attribute("placeholder", placeholder);
+        let _ = element.set_attribute("rows", "4");
+        element.set_text_content(Some(initial_text));
+        set_style(&element, "font", "inherit");
+        set_style(&element, "box-sizing", "border-box");
+        set_style(&element, "width", "100%");
+        WebView { element }
+    }
+
     fn create_checkbox(&mut self, label: &str, checked: bool) -> Self::PlatformView {
         let wrapper = document()
             .create_element("label")
@@ -334,6 +474,33 @@ impl Backend for WebBackend {
             .expect("goyda(web): failed to create <input>");
         let _ = input.set_attribute("type", "checkbox");
         if checked {
+            let _ = input.set_attribute("checked", "checked");
+        }
+        let _ = wrapper.append_child(&input);
+
+        if !label.is_empty() {
+            let text = document().create_element("span").expect("goyda(web): failed to create <span>");
+            text.set_text_content(Some(label));
+            let _ = wrapper.append_child(&text);
+        }
+
+        WebView { element: wrapper }
+    }
+
+    fn create_radio_button(&mut self, group: &str, label: &str, selected: bool) -> Self::PlatformView {
+        // `name="{group}"` gives mutual exclusion for free - the browser
+        // itself deselects every other `input[type=radio]` sharing that
+        // name the moment this one gets selected, no extra JS needed.
+        let wrapper = document().create_element("label").expect("goyda(web): failed to create <label>");
+        set_style(&wrapper, "display", "inline-flex");
+        set_style(&wrapper, "align-items", "center");
+        set_style(&wrapper, "gap", "6px");
+        set_style(&wrapper, "cursor", "pointer");
+
+        let input = document().create_element("input").expect("goyda(web): failed to create <input>");
+        let _ = input.set_attribute("type", "radio");
+        let _ = input.set_attribute("name", group);
+        if selected {
             let _ = input.set_attribute("checked", "checked");
         }
         let _ = wrapper.append_child(&input);
@@ -438,6 +605,33 @@ impl Backend for WebBackend {
             set_style(&element, "gap", &format!("{spacing}px"));
         }
 
+        for child in children {
+            let _ = element.append_child(&child.element);
+        }
+
+        WebView { element }
+    }
+
+    fn create_scroll_view(&mut self, direction: LayoutDirection, spacing: i32, children: Vec<Self::PlatformView>) -> Self::PlatformView {
+        let view = self.create_stack(direction, spacing, children);
+        match direction {
+            LayoutDirection::Vertical => set_style(&view.element, "overflow-y", "auto"),
+            LayoutDirection::Horizontal => set_style(&view.element, "overflow-x", "auto"),
+        }
+        view
+    }
+
+    fn create_overlay(&mut self, children: Vec<Self::PlatformView>) -> Self::PlatformView {
+        let element = document().create_element("div").expect("goyda(web): failed to create <div>");
+        set_style(&element, "position", "relative");
+
+        for child in &children {
+            // `left`/`top`/`z-index` (see `Axis::OffsetX`/`OffsetY`/`ZIndex`)
+            // already applied to `child.element` by the time it got here -
+            // this just switches it out of normal flow so those actually
+            // do something.
+            set_style(&child.element, "position", "absolute");
+        }
         for child in children {
             let _ = element.append_child(&child.element);
         }

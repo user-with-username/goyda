@@ -3,13 +3,38 @@ use jni::{
     JNIEnv, JavaVM
 };
 use crate::core::{Backend, BackendUpdater};
-use crate::components::{Asset, LayoutDirection, StyleProperty, Color, Axis, Edge, StyleValue};
-use crate::core::events::Update;
+use crate::components::{Align, Asset, LayoutDirection, StyleProperty, Color, Axis, Edge, StyleValue};
+use crate::core::events::{Event, Update};
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::rc::Rc;
+use std::sync::{Arc, Mutex};
 use once_cell::sync::{Lazy, OnceCell};
 
 pub static JVM: OnceCell<JavaVM> = OnceCell::new();
+
+/// Group name -> every `RadioButton` created with that group - no native
+/// "radio group" container exists in this backend (standalone
+/// `android.widget.RadioButton`s don't auto-exclude each other the way
+/// children of a real `RadioGroup` do), so mutual exclusion is done by
+/// hand: selecting one unchecks every other entry in the same `Vec` (see
+/// `select_radio` below). `Arc<GlobalRef>` (not a fresh JNI local/global
+/// ref per lookup) so identifying "is this the one that got clicked" is
+/// just a pointer comparison (`Arc::ptr_eq`), no JNI object-identity call
+/// needed.
+static RADIO_GROUPS: Lazy<Mutex<HashMap<String, Vec<Arc<GlobalRef>>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+
+fn register_radio(group: &str, view: &AndroidView) {
+    RADIO_GROUPS.lock().unwrap().entry(group.to_string()).or_default().push(view.global_ref.clone());
+}
+
+fn select_radio(env: &mut JNIEnv, group: &str, selected: &AndroidView) {
+    let members = RADIO_GROUPS.lock().unwrap().get(group).cloned().unwrap_or_default();
+    for member in &members {
+        let is_selected = Arc::ptr_eq(member, &selected.global_ref);
+        let local = env.new_local_ref(member.as_obj()).unwrap();
+        let _ = env.call_method(&local, "setChecked", "(Z)V", &[JValue::Bool(is_selected as u8)]);
+    }
+}
 
 type StyleApplier = fn(&mut JNIEnv, &JObject, &StyleValue);
 
@@ -233,6 +258,148 @@ fn apply_margin_all(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
     ).unwrap();
 }
 
+fn set_layout_dimension(env: &mut JNIEnv, view: &JObject, field: &str, v: i32) {
+    let Ok(params) = env
+        .call_method(view, "getLayoutParams", "()Landroid/view/ViewGroup$LayoutParams;", &[])
+        .and_then(|r| r.l())
+    else {
+        return;
+    };
+    let _ = env.set_field(&params, field, "I", JValue::Int(v));
+    let _ = env.call_method(view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&params)]);
+}
+
+fn apply_width(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let Some(v) = resolve_length(value) else { return; };
+    set_layout_dimension(env, view, "width", v);
+}
+
+fn apply_height(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let Some(v) = resolve_length(value) else { return; };
+    set_layout_dimension(env, view, "height", v);
+}
+
+/// `Typeface.BOLD`/`Typeface.ITALIC`/`Typeface.BOLD_ITALIC` are bit flags
+/// (1/2/3), so `Axis::FontWeight`/`Axis::FontStyle` (applied as two
+/// independent style properties) read the view's *current* typeface style
+/// first and flip only their own bit, instead of clobbering whichever one
+/// was set first.
+fn current_typeface_style(env: &mut JNIEnv, view: &JObject) -> i32 {
+    env.call_method(view, "getTypeface", "()Landroid/graphics/Typeface;", &[])
+        .ok()
+        .and_then(|r| r.l().ok())
+        .filter(|t| !t.is_null())
+        .and_then(|t| env.call_method(&t, "getStyle", "()I", &[]).ok())
+        .and_then(|r| r.i().ok())
+        .unwrap_or(0)
+}
+
+fn set_typeface_style(env: &mut JNIEnv, view: &JObject, style: i32) {
+    let _ = env.call_method(view, "setTypeface", "(Landroid/graphics/Typeface;I)V", &[JValue::Object(&JObject::null()), JValue::Int(style)]);
+}
+
+const TYPEFACE_BOLD: i32 = 1;
+const TYPEFACE_ITALIC: i32 = 2;
+
+fn apply_font_weight(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let StyleValue::Bool(bold) = value else { return; };
+    let current = current_typeface_style(env, view);
+    let updated = if *bold { current | TYPEFACE_BOLD } else { current & !TYPEFACE_BOLD };
+    set_typeface_style(env, view, updated);
+}
+
+fn apply_font_style(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let StyleValue::Bool(italic) = value else { return; };
+    let current = current_typeface_style(env, view);
+    let updated = if *italic { current | TYPEFACE_ITALIC } else { current & !TYPEFACE_ITALIC };
+    set_typeface_style(env, view, updated);
+}
+
+const GRAVITY_LEFT: i32 = 3;
+const GRAVITY_CENTER_HORIZONTAL: i32 = 1;
+const GRAVITY_RIGHT: i32 = 5;
+const GRAVITY_FILL_HORIZONTAL: i32 = 7;
+const GRAVITY_TOP: i32 = 48;
+const GRAVITY_CENTER_VERTICAL: i32 = 16;
+const GRAVITY_BOTTOM: i32 = 80;
+const GRAVITY_FILL_VERTICAL: i32 = 112;
+const GRAVITY_HORIZONTAL_MASK: i32 = 7;
+const GRAVITY_VERTICAL_MASK: i32 = 112;
+
+fn apply_text_align(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let StyleValue::Align(align) = value else { return; };
+    let gravity = match align {
+        Align::Start => GRAVITY_LEFT,
+        Align::Center => GRAVITY_CENTER_HORIZONTAL,
+        Align::End => GRAVITY_RIGHT,
+        Align::Stretch | Align::SpaceBetween => GRAVITY_LEFT,
+    };
+    let _ = env.call_method(view, "setGravity", "(I)V", &[JValue::Int(gravity)]);
+}
+
+fn horizontal_gravity(align: Align) -> i32 {
+    match align {
+        Align::Start => GRAVITY_LEFT,
+        Align::Center => GRAVITY_CENTER_HORIZONTAL,
+        Align::End => GRAVITY_RIGHT,
+        Align::Stretch => GRAVITY_FILL_HORIZONTAL,
+        // `LinearLayout` has no native "even spacing" gravity - centering is
+        // the closest single-value approximation.
+        Align::SpaceBetween => GRAVITY_CENTER_HORIZONTAL,
+    }
+}
+
+fn vertical_gravity(align: Align) -> i32 {
+    match align {
+        Align::Start => GRAVITY_TOP,
+        Align::Center => GRAVITY_CENTER_VERTICAL,
+        Align::End => GRAVITY_BOTTOM,
+        Align::Stretch => GRAVITY_FILL_VERTICAL,
+        Align::SpaceBetween => GRAVITY_CENTER_VERTICAL,
+    }
+}
+
+/// `AlignItems`/`JustifyContent` only make sense on a `Stack` (a
+/// `LinearLayout`) - `getOrientation` fails harmlessly (`None`, so these
+/// become no-ops) on any other view, which is the only signal available
+/// here for "is this actually a `Stack`".
+fn stack_orientation(env: &mut JNIEnv, view: &JObject) -> Option<i32> {
+    env.call_method(view, "getOrientation", "()I", &[]).ok()?.i().ok()
+}
+
+fn current_gravity(env: &mut JNIEnv, view: &JObject) -> i32 {
+    env.call_method(view, "getGravity", "()I", &[]).ok().and_then(|r| r.i().ok()).unwrap_or(0)
+}
+
+/// The `LinearLayout`'s single `gravity` int packs both axes into one
+/// value, so cross/main-axis alignment (`AlignItems`/`JustifyContent`) has
+/// to read-modify-write only its own axis's bits (`GRAVITY_HORIZONTAL_MASK`/
+/// `GRAVITY_VERTICAL_MASK`) - same reasoning as
+/// [`current_typeface_style`]/[`set_typeface_style`] above.
+fn apply_align_items(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let StyleValue::Align(align) = value else { return; };
+    let Some(orientation) = stack_orientation(env, view) else { return; };
+    let current = current_gravity(env, view);
+    let updated = if orientation == 1 {
+        (current & !GRAVITY_HORIZONTAL_MASK) | horizontal_gravity(*align)
+    } else {
+        (current & !GRAVITY_VERTICAL_MASK) | vertical_gravity(*align)
+    };
+    let _ = env.call_method(view, "setGravity", "(I)V", &[JValue::Int(updated)]);
+}
+
+fn apply_justify_content(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let StyleValue::Align(align) = value else { return; };
+    let Some(orientation) = stack_orientation(env, view) else { return; };
+    let current = current_gravity(env, view);
+    let updated = if orientation == 1 {
+        (current & !GRAVITY_VERTICAL_MASK) | vertical_gravity(*align)
+    } else {
+        (current & !GRAVITY_HORIZONTAL_MASK) | horizontal_gravity(*align)
+    };
+    let _ = env.call_method(view, "setGravity", "(I)V", &[JValue::Int(updated)]);
+}
+
 /// Reads an asset's full content from `AssetManager` into memory. Needed
 /// (rather than handing the `InputStream` straight to `BitmapFactory`) for
 /// SVGs, which have to be rasterized in Rust before Android's raster-only
@@ -421,6 +588,117 @@ fn load_asset_typeface<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, path: &s
     }
 }
 
+fn apply_line_height(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let Some(v) = resolve_length(value) else { return; };
+    // `setLineHeight(int)` (an *absolute* px line height) only exists from
+    // API 28 - `setLineSpacing(extra, mult)` is the portable fallback,
+    // added as extra space per line rather than a true absolute height.
+    let _ = env.call_method(view, "setLineSpacing", "(FF)V", &[JValue::Float(v as f32), JValue::Float(1.0)]);
+}
+
+fn apply_letter_spacing(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let Some(v) = resolve_length(value) else { return; };
+    // `setLetterSpacing` takes EM units, not px - convert using the view's
+    // own current text size.
+    let text_size = env.call_method(view, "getTextSize", "()F", &[]).ok().and_then(|r| r.f().ok()).unwrap_or(1.0).max(1.0);
+    let _ = env.call_method(view, "setLetterSpacing", "(F)V", &[JValue::Float(v as f32 / text_size)]);
+}
+
+const PAINT_UNDERLINE_FLAG: i32 = 8;
+const PAINT_STRIKETHRU_FLAG: i32 = 16;
+
+fn current_paint_flags(env: &mut JNIEnv, view: &JObject) -> i32 {
+    env.call_method(view, "getPaintFlags", "()I", &[]).ok().and_then(|r| r.i().ok()).unwrap_or(0)
+}
+
+fn apply_underline(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let StyleValue::Bool(on) = value else { return; };
+    let current = current_paint_flags(env, view);
+    let updated = if *on { current | PAINT_UNDERLINE_FLAG } else { current & !PAINT_UNDERLINE_FLAG };
+    let _ = env.call_method(view, "setPaintFlags", "(I)V", &[JValue::Int(updated)]);
+}
+
+fn apply_strikethrough(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let StyleValue::Bool(on) = value else { return; };
+    let current = current_paint_flags(env, view);
+    let updated = if *on { current | PAINT_STRIKETHRU_FLAG } else { current & !PAINT_STRIKETHRU_FLAG };
+    let _ = env.call_method(view, "setPaintFlags", "(I)V", &[JValue::Int(updated)]);
+}
+
+fn apply_ellipsis(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let StyleValue::Bool(true) = value else { return; };
+    let Ok(truncate_class) = env.find_class("android/text/TextUtils$TruncateAt") else { return; };
+    let Ok(end) = env.get_static_field(truncate_class, "END", "Landroid/text/TextUtils$TruncateAt;") else { return; };
+    let Ok(end_obj) = end.l() else { return; };
+    let _ = env.call_method(view, "setSingleLine", "(Z)V", &[JValue::Bool(1)]);
+    let _ = env.call_method(view, "setEllipsize", "(Landroid/text/TextUtils$TruncateAt;)V", &[JValue::Object(&end_obj)]);
+}
+
+/// See [`Axis::Clip`]'s doc comment - `true` (the only value `.clip()`
+/// ever produces) clips this view's children to its own bounds, which is
+/// already `ViewGroup`'s default; the interesting direction
+/// (`setClipChildren(false)`, opt out of the default clip) has no
+/// `Component` builder method yet, so this stays a one-way no-op-in-
+/// practice knob for parity with the other two backends' `Axis::Clip`.
+fn apply_clip(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let StyleValue::Bool(clip) = value else { return; };
+    let _ = env.call_method(view, "setClipChildren", "(Z)V", &[JValue::Bool(*clip as u8)]);
+    let _ = env.call_method(view, "setClipToPadding", "(Z)V", &[JValue::Bool(*clip as u8)]);
+}
+
+fn apply_shadow(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let Some(v) = resolve_length(value) else { return; };
+    // `elevation` (API 21+) is the only cross-version native shadow a
+    // plain `View` has - it's a soft drop shadow shaped by the view's own
+    // outline, not a configurable offset/blur/color like the other two
+    // backends' hand-painted shadow, so size is the only knob that maps
+    // cleanly (see `apply_shadow_color` for the color's own limits).
+    let _ = env.call_method(view, "setElevation", "(F)V", &[JValue::Float(v as f32)]);
+}
+
+fn apply_shadow_color(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let Some(c) = resolve_color(value) else { return; };
+    // API 28+ only (`setOutlineSpotShadowColor`) - silently a no-op on
+    // older devices, same as every other elevation-shadow color knob on
+    // Android.
+    let _ = env.call_method(view, "setOutlineSpotShadowColor", "(I)V", &[JValue::Int(c)]);
+    let _ = env.call_method(view, "setOutlineAmbientShadowColor", "(I)V", &[JValue::Int(c)]);
+}
+
+/// Only meaningful on a direct child of an [`Overlay`](crate::components::Overlay)
+/// - stashed as a `leftMargin`/`topMargin` on whatever `LayoutParams` the
+/// child currently has (set at creation time, e.g.
+/// `LinearLayout$LayoutParams`) purely as a carrier, since nothing else
+/// reads margins on an about-to-be-reparented overlay child. `create_overlay`
+/// (see below) reads them back and builds a fresh `FrameLayout$LayoutParams`
+/// from them when it reparents each child - so combining `.offset(...)`
+/// with a real `.margin(...)` (via `Axis::Margin`) on the same `Overlay`
+/// child isn't supported (whichever style applies last wins the shared
+/// slot).
+fn apply_offset_x(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let Some(v) = resolve_length(value) else { return; };
+    set_layout_margin(env, view, "leftMargin", v);
+}
+
+fn apply_offset_y(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
+    let Some(v) = resolve_length(value) else { return; };
+    set_layout_margin(env, view, "topMargin", v);
+}
+
+fn set_layout_margin(env: &mut JNIEnv, view: &JObject, field: &str, v: i32) {
+    let Ok(params) = env
+        .call_method(view, "getLayoutParams", "()Landroid/view/ViewGroup$LayoutParams;", &[])
+        .and_then(|r| r.l())
+    else {
+        return;
+    };
+    if !env.is_instance_of(&params, "android/view/ViewGroup$MarginLayoutParams").unwrap_or(false) {
+        return;
+    }
+    let _ = env.set_field(&params, field, "I", JValue::Int(v));
+    let _ = env.call_method(view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&params)]);
+}
+
 fn build_style_registry() -> HashMap<Axis, StyleApplier> {
     let mut m: HashMap<Axis, StyleApplier> = HashMap::new();
     m.insert(Axis::TextColor, apply_text_color);
@@ -434,6 +712,23 @@ fn build_style_registry() -> HashMap<Axis, StyleApplier> {
     m.insert(Axis::BorderWidth, apply_border_width);
     m.insert(Axis::BorderColor, apply_border_color);
     m.insert(Axis::Opacity, apply_opacity);
+    m.insert(Axis::Width, apply_width);
+    m.insert(Axis::Height, apply_height);
+    m.insert(Axis::FontWeight, apply_font_weight);
+    m.insert(Axis::FontStyle, apply_font_style);
+    m.insert(Axis::TextAlign, apply_text_align);
+    m.insert(Axis::AlignItems, apply_align_items);
+    m.insert(Axis::JustifyContent, apply_justify_content);
+    m.insert(Axis::LineHeight, apply_line_height);
+    m.insert(Axis::LetterSpacing, apply_letter_spacing);
+    m.insert(Axis::Underline, apply_underline);
+    m.insert(Axis::Strikethrough, apply_strikethrough);
+    m.insert(Axis::TextOverflowEllipsis, apply_ellipsis);
+    m.insert(Axis::Clip, apply_clip);
+    m.insert(Axis::Shadow, apply_shadow);
+    m.insert(Axis::ShadowColor, apply_shadow_color);
+    m.insert(Axis::OffsetX, apply_offset_x);
+    m.insert(Axis::OffsetY, apply_offset_y);
     m
 }
 
@@ -584,6 +879,34 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
         AndroidView { global_ref: Arc::new(self.env.new_global_ref(edit_text).unwrap()) }
     }
 
+    fn create_textarea(&mut self, placeholder: &str, initial_text: &str) -> Self::PlatformView {
+        let edit_text = self.env
+            .new_object("android/widget/EditText", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+
+        // `TYPE_CLASS_TEXT | TYPE_TEXT_FLAG_MULTI_LINE` (0x1 | 0x20000) -
+        // without the multi-line flag, `EditText` treats Enter as "submit"
+        // (calls the IME action) instead of inserting a newline.
+        const INPUT_TYPE_TEXT_MULTILINE: i32 = 0x1 | 0x20000;
+        self.env.call_method(&edit_text, "setInputType", "(I)V", &[JValue::Int(INPUT_TYPE_TEXT_MULTILINE)]).unwrap();
+        self.env.call_method(&edit_text, "setMinLines", "(I)V", &[JValue::Int(4)]).unwrap();
+        self.env.call_method(&edit_text, "setGravity", "(I)V", &[JValue::Int(48)]).unwrap(); // Gravity.TOP
+
+        if !placeholder.is_empty() {
+            let java_placeholder = self.env.new_string(placeholder).unwrap();
+            self.env.call_method(&edit_text, "setHint", "(Ljava/lang/CharSequence;)V", &[JValue::Object(&java_placeholder)]).unwrap();
+        }
+        if !initial_text.is_empty() {
+            let java_text = self.env.new_string(initial_text).unwrap();
+            self.env.call_method(&edit_text, "setText", "(Ljava/lang/CharSequence;)V", &[JValue::Object(&java_text)]).unwrap();
+        }
+
+        let layout_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(-1), JValue::Int(-2)]).unwrap();
+        self.env.call_method(&edit_text, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
+
+        AndroidView { global_ref: Arc::new(self.env.new_global_ref(edit_text).unwrap()) }
+    }
+
     fn create_checkbox(&mut self, label: &str, checked: bool) -> Self::PlatformView {
         let checkbox = self.env
             .new_object("android/widget/CheckBox", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
@@ -597,6 +920,47 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
         self.env.call_method(&checkbox, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
 
         AndroidView { global_ref: Arc::new(self.env.new_global_ref(checkbox).unwrap()) }
+    }
+
+    fn create_radio_button(&mut self, group: &str, label: &str, selected: bool) -> Self::PlatformView {
+        let radio = self.env
+            .new_object("android/widget/RadioButton", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+
+        let java_label = self.env.new_string(label).unwrap();
+        self.env.call_method(&radio, "setText", "(Ljava/lang/CharSequence;)V", &[JValue::Object(&java_label)]).unwrap();
+        self.env.call_method(&radio, "setChecked", "(Z)V", &[JValue::Bool(selected as u8)]).unwrap();
+
+        let layout_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(-2), JValue::Int(-2)]).unwrap();
+        self.env.call_method(&radio, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
+
+        let view = AndroidView { global_ref: Arc::new(self.env.new_global_ref(radio).unwrap()) };
+        register_radio(group, &view);
+        if selected {
+            select_radio(self.env, group, &view);
+        }
+
+        // Standalone `RadioButton`s (no `RadioGroup` parent) still toggle
+        // like a checkbox on click by default, which would let tapping an
+        // already-selected one deselect itself - `setChecked` on click
+        // (rather than `toggle`) plus `select_radio`'s group-wide
+        // read-modify-write is what keeps this an actual radio: exactly one
+        // member selected, chosen by clicking, never by unclicking.
+        let group_owned = group.to_string();
+        let target = view.global_ref.clone();
+        let callback: Rc<dyn Fn(Event)> = Rc::new(move |_e| {
+            if let Some(jvm) = JVM.get() {
+                if let Ok(mut env) = jvm.attach_current_thread() {
+                    let target_view = AndroidView { global_ref: target.clone() };
+                    select_radio(&mut env, &group_owned, &target_view);
+                }
+            }
+        });
+        unsafe {
+            crate::listeners::on_click::attach(self, &view, callback);
+        }
+
+        view
     }
 
     fn create_switch(&mut self, checked: bool) -> Self::PlatformView {
@@ -707,6 +1071,102 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
         self.env.call_method(&layout, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&layout_params)]).unwrap();
 
         AndroidView { global_ref: Arc::new(self.env.new_global_ref(layout).unwrap()) }
+    }
+
+    fn create_scroll_view(&mut self, direction: LayoutDirection, spacing: i32, children: Vec<Self::PlatformView>) -> Self::PlatformView {
+        let inner = self.env
+            .new_object("android/widget/LinearLayout", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+
+        let orientation = match direction {
+            LayoutDirection::Horizontal => 0,
+            LayoutDirection::Vertical => 1,
+        };
+        self.env.call_method(&inner, "setOrientation", "(I)V", &[JValue::Int(orientation)]).unwrap();
+
+        let real_spacing = spacing * 3;
+
+        for (idx, child_view) in children.into_iter().enumerate() {
+            let local_child = self.env.new_local_ref(child_view.global_ref.as_obj()).unwrap();
+
+            let child_params = self.env
+                .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(-2), JValue::Int(-2)]).unwrap();
+            self.env.set_field(&child_params, "gravity", "I", JValue::Int(1)).unwrap();
+
+            if spacing > 0 && idx > 0 {
+                let (margin_l, margin_t) = if direction == LayoutDirection::Vertical { (0, real_spacing) } else { (real_spacing, 0) };
+                self.env.call_method(&child_params, "setMargins", "(IIII)V", &[JValue::Int(margin_l), JValue::Int(margin_t), JValue::Int(0), JValue::Int(0)]).unwrap();
+            }
+
+            self.env.call_method(&inner, "addView", "(Landroid/view/View;Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&local_child), JValue::Object(&child_params)]).unwrap();
+        }
+
+        // Unlike `create_stack`'s own `(-1, -1)` (`MATCH_PARENT` both axes),
+        // the scrollable axis must stay `WRAP_CONTENT` - a `MATCH_PARENT`
+        // main axis would just clamp the content to the viewport's own
+        // size, leaving nothing to scroll.
+        let (inner_w, inner_h) = match direction {
+            LayoutDirection::Horizontal => (-2, -1),
+            LayoutDirection::Vertical => (-1, -2),
+        };
+        let inner_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(inner_w), JValue::Int(inner_h)]).unwrap();
+        self.env.call_method(&inner, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&inner_params)]).unwrap();
+
+        let scroll_class = match direction {
+            LayoutDirection::Horizontal => "android/widget/HorizontalScrollView",
+            LayoutDirection::Vertical => "android/widget/ScrollView",
+        };
+        let scroll_view = self.env
+            .new_object(scroll_class, "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+        self.env.call_method(&scroll_view, "addView", "(Landroid/view/View;)V", &[JValue::Object(&inner)]).unwrap();
+
+        let outer_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(-1), JValue::Int(-1)]).unwrap();
+        self.env.call_method(&scroll_view, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&outer_params)]).unwrap();
+
+        AndroidView { global_ref: Arc::new(self.env.new_global_ref(scroll_view).unwrap()) }
+    }
+
+    fn create_overlay(&mut self, children: Vec<Self::PlatformView>) -> Self::PlatformView {
+        let frame = self.env
+            .new_object("android/widget/FrameLayout", "(Landroid/content/Context;)V", &[JValue::Object(self.context)]).unwrap();
+
+        for child_view in children {
+            let local_child = self.env.new_local_ref(child_view.global_ref.as_obj()).unwrap();
+
+            // Read back whatever `apply_offset_x`/`apply_offset_y` stashed
+            // as a margin on the child's *current* `LayoutParams` (set by
+            // its own `create_*`) before replacing it with a fresh
+            // `FrameLayout$LayoutParams` - see those functions' doc
+            // comments for why a margin is the carrier.
+            let old_params = self.env.call_method(&local_child, "getLayoutParams", "()Landroid/view/ViewGroup$LayoutParams;", &[]).ok().and_then(|r| r.l().ok());
+            let (left, top) = match &old_params {
+                Some(p) if self.env.is_instance_of(p, "android/view/ViewGroup$MarginLayoutParams").unwrap_or(false) => {
+                    let l = self.env.get_field(p, "leftMargin", "I").ok().and_then(|v| v.i().ok()).unwrap_or(0);
+                    let t = self.env.get_field(p, "topMargin", "I").ok().and_then(|v| v.i().ok()).unwrap_or(0);
+                    (l, t)
+                }
+                _ => (0, 0),
+            };
+
+            let frame_params = self.env
+                .new_object("android/widget/FrameLayout$LayoutParams", "(II)V", &[JValue::Int(-2), JValue::Int(-2)]).unwrap();
+            self.env.set_field(&frame_params, "leftMargin", "I", JValue::Int(left)).unwrap();
+            self.env.set_field(&frame_params, "topMargin", "I", JValue::Int(top)).unwrap();
+            self.env.call_method(&local_child, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&frame_params)]).unwrap();
+
+            // No `Axis::ZIndex` tracking on this backend (see
+            // `build_style_registry`'s doc comment) - `addView` order is
+            // the only stacking rule, later added draws on top, matching
+            // the other two backends' tie-break default.
+            self.env.call_method(&frame, "addView", "(Landroid/view/View;)V", &[JValue::Object(&local_child)]).unwrap();
+        }
+
+        let outer_params = self.env
+            .new_object("android/widget/LinearLayout$LayoutParams", "(II)V", &[JValue::Int(-2), JValue::Int(-2)]).unwrap();
+        self.env.call_method(&frame, "setLayoutParams", "(Landroid/view/ViewGroup$LayoutParams;)V", &[JValue::Object(&outer_params)]).unwrap();
+
+        AndroidView { global_ref: Arc::new(self.env.new_global_ref(frame).unwrap()) }
     }
 
     fn apply_style(&mut self, view: &Self::PlatformView, style: StyleProperty) {

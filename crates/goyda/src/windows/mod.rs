@@ -59,11 +59,46 @@ pub fn toggle_checked(hwnd: WinHwnd) -> bool {
 /// toggling it (which would double-toggle back to the original value on
 /// every click).
 pub fn is_self_toggling(hwnd: WinHwnd) -> bool {
-    state::with_state(hwnd, |s| matches!(s.kind, state::ControlKind::Checkbox { .. } | state::ControlKind::Switch)).unwrap_or(false)
+    state::with_state(hwnd, |s| {
+        matches!(s.kind, state::ControlKind::Checkbox { .. } | state::ControlKind::Switch | state::ControlKind::RadioButton { .. })
+    })
+    .unwrap_or(false)
 }
 
 pub fn is_checked(hwnd: WinHwnd) -> bool {
     state::with_state(hwnd, |s| s.checked).unwrap_or(false)
+}
+
+/// Adds `hwnd` to `group`'s membership list - called once, at
+/// `create_radio_button` time (see `windows/backend.rs`).
+pub fn register_radio(hwnd: WinHwnd, group: &str) {
+    state::RADIO_GROUPS.with(|g| {
+        g.borrow_mut().entry(group.to_string()).or_default().push(hwnd);
+    });
+}
+
+/// Selects `hwnd` (sets `checked = true`) and deselects every other member
+/// of `group`, repainting all of them. Used by the intrinsic click
+/// behavior `create_radio_button` registers - independent of whether the
+/// app attaches `.on_checked_change(...)`, which only needs to *observe*
+/// this (see `crate::listeners`'s `checked_change` arm and
+/// [`is_self_toggling`]).
+pub fn select_radio(hwnd: WinHwnd, group: &str) {
+    let members = state::RADIO_GROUPS.with(|g| g.borrow().get(group).cloned().unwrap_or_default());
+    for member in members {
+        let selected = member == hwnd;
+        let changed = state::with_state(member, |s| {
+            let changed = s.checked != selected;
+            s.checked = selected;
+            changed
+        })
+        .unwrap_or(false);
+        if changed {
+            unsafe {
+                windows_sys::Win32::Graphics::Gdi::InvalidateRect(member, std::ptr::null(), 1);
+            }
+        }
+    }
 }
 
 /// Whether `hwnd` is a [`TextInput`](crate::components::TextInput) - these
@@ -125,6 +160,27 @@ pub fn current_progress(hwnd: WinHwnd) -> f32 {
         _ => 0.0,
     })
     .unwrap_or(0.0)
+}
+
+/// Adjusts a [`ScrollView`](crate::components::ScrollView)'s scroll
+/// position by `delta` pixels (clamped to `0..=(content size - viewport
+/// size)`) and immediately re-flows its children to match - used by the
+/// intrinsic `WM_MOUSEWHEEL` hook `create_scroll_view` registers (see
+/// `windows/backend.rs`).
+pub fn scroll_by(hwnd: WinHwnd, delta: i32) {
+    let Some((direction, content_main)) = layout::content_main_size(hwnd) else { return };
+    let rect = state::client_rect(hwnd);
+    let viewport_main = match direction {
+        crate::components::LayoutDirection::Horizontal => rect.right,
+        crate::components::LayoutDirection::Vertical => rect.bottom,
+    };
+    let max_offset = (content_main - viewport_main).max(0);
+
+    state::with_state(hwnd, |s| {
+        s.scroll_offset = (s.scroll_offset + delta).clamp(0, max_offset);
+    });
+
+    layout::relayout(hwnd, rect.right, rect.bottom);
 }
 
 use std::cell::RefCell;

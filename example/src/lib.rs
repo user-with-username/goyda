@@ -1,4 +1,4 @@
-use goyda::prelude::{page, stack, Component, Color, asset, navigate};
+use goyda::prelude::{page, stack, Component, Color, Align, LayoutDirection, asset, navigate};
 
 const COLOR_PRIMARY: Color = Color::Custom(0xFF3949AB);
 const COLOR_MUTED: Color = Color::GRAY;
@@ -85,10 +85,105 @@ pub fn counter_page() -> Component {
             .background(COLOR_PRIMARY)
             .px(4)
             .py(2)
+            .rounded(2),
+
+        button {
+            text: "Go to Styles",
+            on_click: navigate("/styles"),
+        }
+            .background(COLOR_PRIMARY)
+            .px(4)
+            .py(2)
             .rounded(2)
     }
     .p(6)
     .background(COLOR_DANGER)
+}
+
+#[page("/styles")]
+pub fn styles_page() -> Component {
+    let mut plan = String::from("Free");
+
+    let rows: Vec<Component> = (0..15)
+        .map(|i| Component::text(move || format!("Scrollable row {i}")).color(COLOR_MUTED))
+        .collect();
+
+    stack! {
+        direction: Vertical,
+        spacing: 12,
+
+        text { "Styles & components" }
+            .color(COLOR_PRIMARY)
+            .font_size(FONT_SIZE_2XL)
+            .bold(),
+
+        Component::card(vec![
+            Component::text(|| "Card content".to_string()).bold(),
+            Component::text(|| "Centered, italic, fixed width".to_string())
+                .italic()
+                .text_align(Align::Center)
+                .width(240),
+        ]),
+
+        Component::stack(LayoutDirection::Horizontal, 8, vec![
+            Component::badge("NEW", Color::GREEN),
+            Component::badge("3", Color::RED),
+            Component::badge("BETA", Color::ORANGE),
+        ]),
+
+        Component::link("This is a link - click it", || {})
+            .underline(),
+
+        Component::text(|| "Strikethrough text".to_string())
+            .strikethrough()
+            .color(COLOR_MUTED),
+
+        Component::text(|| "Wide letter spacing".to_string())
+            .letter_spacing(4),
+
+        Component::text(|| "A very long line that should truncate with an ellipsis instead of wrapping".to_string())
+            .width(200)
+            .ellipsis(),
+
+        Component::card(vec![
+            Component::text(|| "Colored shadow card".to_string()),
+        ])
+            .shadow_color(COLOR_PRIMARY),
+
+        Component::overlay(vec![
+            Component::stack(LayoutDirection::Vertical, 0, vec![]).background(COLOR_PRIMARY).size(80).rounded(8),
+            Component::badge("9", Color::RED).offset(56, 0).z_index(1),
+        ]),
+
+        Component::radio_button("plan", "Free", true)
+            .on_checked_change(move |_| plan = "Free".into()),
+        Component::radio_button("plan", "Pro", false)
+            .on_checked_change(move |_| plan = "Pro".into()),
+        text { "Selected plan: ", plan }
+            .color(COLOR_MUTED),
+
+        Component::textarea("Write something long...")
+            .height(70)
+            .line_height(28),
+
+        text { "Scrollable list (150px tall, mouse wheel to scroll):" }
+            .color(COLOR_MUTED),
+        Component::scroll_view(LayoutDirection::Vertical, 4, rows)
+            .height(150)
+            .border_color(COLOR_MUTED)
+            .border_width(1),
+
+        button {
+            text: "Back",
+            on_click: navigate("/"),
+        }
+            .background(COLOR_MUTED)
+            .px(4)
+            .py(2)
+            .rounded(2)
+    }
+    .p(6)
+    .background(Color::WHITE)
 }
 
 #[page("/widgets")]

@@ -16,7 +16,7 @@ use std::rc::Rc;
 use windows_sys::Win32::Foundation::{COLORREF, HWND, LPARAM, LRESULT, RECT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{HBITMAP, HFONT};
 
-use crate::components::LayoutDirection;
+use crate::components::{Align, LayoutDirection};
 
 pub const CLASS_NAME: &str = "GoydaControl\0";
 
@@ -31,16 +31,33 @@ pub enum ControlKind {
     /// the component tree - only the initial (wrap-content) sizing happens
     /// during `create_stack` itself.
     Panel { direction: LayoutDirection, spacing: i32, children: Vec<HWND> },
+    /// Structurally identical to `Panel` - kept as its own variant (rather
+    /// than a bool flag on `Panel`) so `relayout` (see
+    /// `crate::windows::layout`) can pattern-match both together with an
+    /// or-pattern while everything else that only cares about "is this a
+    /// panel" (e.g. `paint.rs`) can still tell them apart.
+    ScrollView { direction: LayoutDirection, spacing: i32, children: Vec<HWND> },
     /// `text` holds what's actually been typed (kept in sync with
     /// [`ControlState::text_buffer`] by the `text_watcher` listener's
     /// `WM_CHAR` hook), `placeholder` is only drawn when `text` is empty.
-    TextInput { text: String, placeholder: String },
+    /// `multiline` distinguishes a [`TextInput`](crate::components::TextInput)
+    /// (`false`) from a [`Textarea`](crate::components::Textarea) (`true`) -
+    /// same control kind either way, since the only real differences are
+    /// whether Enter inserts a newline and how the text wraps/sizes.
+    TextInput { text: String, placeholder: String, multiline: bool },
     Checkbox { label: String },
+    /// Which group (see [`RADIO_GROUPS`]) is tracked there, not here.
+    RadioButton { label: String },
     Switch,
     /// `0.0..=1.0`.
     Progress { value: f32 },
     Spacer,
     Divider,
+    /// No linear flow like `Panel` - every child is positioned at its own
+    /// `ControlState::offset_x`/`offset_y`, stacked by
+    /// `ControlState::z_index` (`position: absolute` in CSS terms). See
+    /// [`crate::components::Overlay`].
+    Overlay { children: Vec<HWND> },
 }
 
 #[derive(Clone, Default)]
@@ -75,6 +92,40 @@ pub struct ControlState {
     /// the `checked_change` listener's windows hook (see
     /// `crate::listeners`) so painting can reflect it.
     pub checked: bool,
+    /// `Axis::Width`/`Axis::Height` overrides - read by [`natural_size`],
+    /// so anything that already asks for a control's natural size (layout,
+    /// paint) gets the override for free with no separate call site.
+    pub explicit_width: Option<i32>,
+    pub explicit_height: Option<i32>,
+    pub bold: bool,
+    pub italic: bool,
+    /// Tracked alongside `font` so `Axis::FontWeight`/`Axis::FontStyle` can
+    /// rebuild the right `(size, bold, italic)` font without needing to
+    /// already know the current size.
+    pub font_size: i32,
+    pub text_align: Align,
+    /// Only meaningful when `kind` is `Panel` - cross-axis alignment of its
+    /// children (see [`crate::windows::layout::relayout`]).
+    pub align_items: Align,
+    /// Only meaningful when `kind` is `Panel` - main-axis distribution of
+    /// its children (see [`crate::windows::layout::relayout`]).
+    pub justify_content: Align,
+    /// Only meaningful when `kind` is `ScrollView` - current scroll
+    /// position along the main axis, in pixels, clamped to
+    /// `0..=(content size - viewport size)` by
+    /// [`crate::windows::scroll_by`].
+    pub scroll_offset: i32,
+    pub line_height: Option<i32>,
+    pub letter_spacing: i32,
+    pub underline: bool,
+    pub strikethrough: bool,
+    pub ellipsis: bool,
+    pub shadow_color: Option<COLORREF>,
+    /// Only meaningful on a direct child of an `Overlay` - see
+    /// `ControlKind::Overlay`.
+    pub offset_x: i32,
+    pub offset_y: i32,
+    pub z_index: i32,
 }
 
 impl ControlState {
@@ -93,6 +144,24 @@ impl ControlState {
             natural_size: (0, 0),
             text_buffer: String::new(),
             checked: false,
+            explicit_width: None,
+            explicit_height: None,
+            bold: false,
+            italic: false,
+            font_size: 16,
+            text_align: Align::Start,
+            align_items: Align::Stretch,
+            justify_content: Align::Start,
+            scroll_offset: 0,
+            line_height: None,
+            letter_spacing: 0,
+            underline: false,
+            strikethrough: false,
+            ellipsis: false,
+            shadow_color: None,
+            offset_x: 0,
+            offset_y: 0,
+            z_index: 0,
         }
     }
 }
@@ -109,6 +178,12 @@ thread_local! {
     /// Every control lives on the single UI thread that owns the message
     /// loop, so a thread-local table (no locking) is enough.
     pub static CONTROLS: RefCell<HashMap<isize, HwndData>> = RefCell::new(HashMap::new());
+    /// Group name -> every `RadioButton` `HWND` created with that group -
+    /// no native "radio group" container exists in this backend (see
+    /// `ControlKind`), so mutual exclusion is done by hand: selecting one
+    /// unchecks every other `HWND` in the same `Vec` (see
+    /// `crate::windows::select_radio`).
+    pub static RADIO_GROUPS: RefCell<HashMap<String, Vec<HWND>>> = RefCell::new(HashMap::new());
 }
 
 pub fn key(hwnd: HWND) -> isize {
@@ -138,7 +213,7 @@ pub fn remove(hwnd: HWND) {
 }
 
 pub fn natural_size(hwnd: HWND) -> (i32, i32) {
-    with_state(hwnd, |s| s.natural_size).unwrap_or((0, 0))
+    with_state(hwnd, |s| (s.explicit_width.unwrap_or(s.natural_size.0), s.explicit_height.unwrap_or(s.natural_size.1))).unwrap_or((0, 0))
 }
 
 pub fn to_colorref(argb: u32) -> COLORREF {

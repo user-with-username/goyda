@@ -26,7 +26,7 @@ pub use crate::platform::navigate;
 pub mod prelude {
     pub use goyda_derive::page;
     pub use crate::{stack, parse_children, asset, asset_ref};
-    pub use crate::components::{Component, LayoutDirection, Color, Modifier, Asset};
+    pub use crate::components::{Component, LayoutDirection, Color, Modifier, Asset, Align};
     pub use crate::reactive::{Signal, Memo};
     pub use crate::navigate;
 }
