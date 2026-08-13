@@ -206,6 +206,44 @@ thread_local! {
     /// its reactive bindings hold) alive for as long as it's on screen -
     /// dropped and replaced on the next [`navigate`] call.
     static MOUNTED: RefCell<Option<Component>> = RefCell::new(None);
+    /// The route last mounted by [`navigate`] (or `"/"` at startup) - has no
+    /// OS-level source of truth to read back the way the web target reads
+    /// `window.location().pathname()`, so it's tracked by hand here purely
+    /// for [`rerender`] to know what to re-mount.
+    static CURRENT_PATH: RefCell<String> = RefCell::new(String::from("/"));
+}
+
+/// Reads `HKCU\...\Personalize\AppsUseLightTheme` to seed the initial
+/// [`crate::core::theme::ThemeMode`] from whatever Windows' own
+/// Settings > Personalization > Colors mode is set to - see
+/// `crate::core::theme`'s doc comment for how this plugs into `theme!`.
+/// `0` means dark, any other value (including "key/value missing", the
+/// pre-Windows-10-1809 case) means light.
+fn detect_theme_mode() -> crate::core::theme::ThemeMode {
+    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+
+    let subkey = wide("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
+    let value_name = wide("AppsUseLightTheme");
+    let mut data: u32 = 1;
+    let mut size: u32 = std::mem::size_of::<u32>() as u32;
+
+    let status = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            subkey.as_ptr(),
+            value_name.as_ptr(),
+            RRF_RT_REG_DWORD,
+            std::ptr::null_mut(),
+            &mut data as *mut u32 as *mut _,
+            &mut size,
+        )
+    };
+
+    if status == 0 && data == 0 {
+        crate::core::theme::ThemeMode::Dark
+    } else {
+        crate::core::theme::ThemeMode::Light
+    }
 }
 
 unsafe extern "system" fn root_wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
@@ -298,19 +336,10 @@ fn mount(hinstance: HINSTANCE, root: HWND, page: &Page, fit_window: bool) {
     MOUNTED.with(|m| *m.borrow_mut() = Some(component));
 }
 
-/// Switches the mounted app to whichever `#[page(...)]` is registered for
-/// `path` (see [`crate::find_page`]) - reparents/destroys nothing from the
-/// previous page explicitly; each control is a genuine `HWND`, so
-/// `DestroyWindow`ing the old root's children (done implicitly by replacing
-/// them - see below) tears them down the same way closing any Win32 window
-/// does.
-pub fn navigate(path: &str) {
-    let Some(page) = find_page(path) else {
-        #[cfg(debug_assertions)]
-        eprintln!("goyda(windows): navigate(\"{path}\") - no #[page(...)] registered for that route");
-        return;
-    };
-
+/// Tears down whatever's currently mounted under `root` and mounts `page`
+/// in its place - the shared body of [`navigate`] and [`rerender`], which
+/// differ only in whether the mounted route actually changes.
+fn remount(page: &Page) {
     let Some((hinstance, root)) = ROOT.with(|r| *r.borrow()) else { return };
 
     unsafe {
@@ -341,6 +370,33 @@ pub fn navigate(path: &str) {
             RDW_ERASE | RDW_INVALIDATE | RDW_ALLCHILDREN | RDW_UPDATENOW,
         );
     }
+}
+
+/// Switches the mounted app to whichever `#[page(...)]` is registered for
+/// `path` (see [`crate::find_page`]) - reparents/destroys nothing from the
+/// previous page explicitly; each control is a genuine `HWND`, so
+/// `DestroyWindow`ing the old root's children (done implicitly by replacing
+/// them - see [`remount`]) tears them down the same way closing any Win32
+/// window does.
+pub fn navigate(path: &str) {
+    let Some(page) = find_page(path) else {
+        #[cfg(debug_assertions)]
+        eprintln!("goyda(windows): navigate(\"{path}\") - no #[page(...)] registered for that route");
+        return;
+    };
+
+    remount(page);
+    CURRENT_PATH.with(|p| *p.borrow_mut() = path.to_string());
+}
+
+/// Re-renders whichever route [`navigate`] last mounted (or `"/"` if it's
+/// never been called), in place - no route change, no history entry. Used
+/// by [`crate::core::theme::set_theme_mode`] so a runtime `theme!` switch
+/// shows up immediately.
+pub fn rerender() {
+    let path = CURRENT_PATH.with(|p| p.borrow().clone());
+    let Some(page) = find_page(&path) else { return };
+    remount(page);
 }
 
 /// A double-clicked `.exe` has no console attached to print panic messages
@@ -388,6 +444,8 @@ pub fn run() {
     };
 
     ROOT.with(|r| *r.borrow_mut() = Some((hinstance, root)));
+
+    crate::core::theme::init_theme_mode(detect_theme_mode());
 
     let page = find_page("/").expect("goyda(windows): no #[page(\"/\")] registered");
     mount(hinstance, root, page, true);

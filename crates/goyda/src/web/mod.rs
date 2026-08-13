@@ -97,12 +97,41 @@ fn handle_pop_state() {
     }
 }
 
+/// Re-renders whatever `#[page(...)]` matches the current URL, in place -
+/// same route, no `pushState` call. Used by
+/// [`crate::core::theme::set_theme_mode`] so a runtime `theme!` switch
+/// shows up immediately.
+pub fn rerender() {
+    if let Some(page) = find_page(&current_path()) {
+        render_page(page);
+    }
+}
+
+/// Reads the `(prefers-color-scheme: dark)` media query to seed the initial
+/// [`crate::core::theme::ThemeMode`] from whatever the browser/OS is
+/// actually set to - see `crate::core::theme`'s doc comment for how this
+/// plugs into `theme!`.
+fn detect_theme_mode() -> crate::core::theme::ThemeMode {
+    let prefers_dark = web_sys::window()
+        .and_then(|w| w.match_media("(prefers-color-scheme: dark)").ok().flatten())
+        .map(|mql| mql.matches())
+        .unwrap_or(false);
+
+    if prefers_dark {
+        crate::core::theme::ThemeMode::Dark
+    } else {
+        crate::core::theme::ThemeMode::Light
+    }
+}
+
 /// Entry point wasm-bindgen invokes automatically once the module is
 /// instantiated in the browser - no glue code is required in consumer
 /// crates, matching how android pages need no manual bootstrap either.
 #[wasm_bindgen(start)]
 pub fn __goyda_web_start() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
+
+    crate::core::theme::init_theme_mode(detect_theme_mode());
 
     let path = current_path();
     let page = find_page(&path).ok_or_else(|| {

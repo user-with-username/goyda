@@ -45,6 +45,21 @@ pub use crate::android::navigate;
 #[cfg(all(feature = "windows", not(any(feature = "web", feature = "android"))))]
 pub use crate::windows::navigate;
 
+/// Re-renders whatever page is currently mounted, in place - no route
+/// change, no history entry, just "run the current page's factory again
+/// and swap it in". [`crate::core::theme::set_theme_mode`] is what actually
+/// calls this (so a runtime theme switch shows up immediately); exposed
+/// here too for anything else that wants the same "state changed
+/// out-of-band, rebuild what's on screen" behavior.
+#[cfg(feature = "web")]
+pub use crate::web::rerender;
+
+#[cfg(all(feature = "android", not(feature = "web")))]
+pub use crate::android::rerender;
+
+#[cfg(all(feature = "windows", not(any(feature = "web", feature = "android"))))]
+pub use crate::windows::rerender;
+
 #[cfg(not(any(feature = "android", feature = "web", feature = "windows")))]
 compile_error!(
     "goyda: no platform backend selected. Enable exactly one of the \"android\", \"web\", or \

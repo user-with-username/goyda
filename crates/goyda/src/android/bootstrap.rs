@@ -9,7 +9,7 @@
 
 use std::ffi::c_void;
 
-use goyda_macros::sig;
+use goyda_macros::{jcall, sig, sig_ret};
 use jni::objects::{JClass, JObject, JString, JValue};
 use jni::strings::JNIString;
 use jni::sys::{jboolean, jint, JNI_FALSE, JNI_TRUE, JNI_VERSION_1_6};
@@ -17,7 +17,54 @@ use jni::{JNIEnv, JavaVM, NativeMethod};
 
 use crate::android::backend::{AndroidBackend, JVM};
 use crate::android::{AndroidBridge, BRIDGE};
+use crate::core::theme::{init_theme_mode, ThemeMode};
 use crate::find_page;
+
+/// `Configuration.UI_MODE_NIGHT_MASK`/`UI_MODE_NIGHT_YES` - stable,
+/// long-frozen platform constants, so hardcoding them here is simpler than
+/// a JNI static-field lookup for values that never change.
+const UI_MODE_NIGHT_MASK: i32 = 0x30;
+const UI_MODE_NIGHT_YES: i32 = 0x20;
+
+/// Reads `Context.getResources().getConfiguration().uiMode` to seed the
+/// initial [`ThemeMode`] from whatever the device (or the app's own
+/// requested night-mode override) is actually set to - see
+/// `crate::core::theme`'s doc comment for how this plugs into `theme!`.
+fn detect_theme_mode(env: &mut JNIEnv, context: &JObject) -> ThemeMode {
+    let resources = jcall!(env, context, "getResources", (() -> "android/content/res/Resources"), []);
+    let Ok(resources) = resources.and_then(|r| r.l()) else { return ThemeMode::Light };
+
+    let configuration = jcall!(env, &resources, "getConfiguration", (() -> "android/content/res/Configuration"), []);
+    let Ok(configuration) = configuration.and_then(|r| r.l()) else { return ThemeMode::Light };
+
+    let ui_mode = env.get_field(&configuration, "uiMode", sig_ret!(int)).ok().and_then(|v| v.i().ok()).unwrap_or(0);
+
+    if ui_mode & UI_MODE_NIGHT_MASK == UI_MODE_NIGHT_YES {
+        ThemeMode::Dark
+    } else {
+        ThemeMode::Light
+    }
+}
+
+/// Renders `page` into `bridge`'s root, replacing whatever was mounted
+/// before - the shared body of [`navigate`], [`native_back`], and
+/// [`rerender`], which differ only in how they get to "here's the page to
+/// show" (a new route, a popped back-stack entry, or the same route again
+/// after a `theme!` change).
+fn swap_page(env: &mut JNIEnv, bridge: &mut AndroidBridge, page: &crate::Page) {
+    let context = env.new_local_ref(bridge.context.as_obj()).expect("local ref failed");
+    let component = (page.factory)();
+
+    let mut android_backend = AndroidBackend::new(env, &context);
+    let view = component.render(&mut android_backend);
+    let view_jobject = view.as_jobject(env);
+
+    let root = env.new_local_ref(bridge.root.as_obj()).expect("local ref failed");
+    env.call_method(&root, "removeAllViews", sig!(() -> void), &[]).unwrap();
+    env.call_method(&root, "addView", sig!(("android/view/View") -> void), &[JValue::Object(&view_jobject)]).unwrap();
+
+    bridge.ui_tree = component;
+}
 
 fn native_init(mut env: JNIEnv, _class: JClass, root: JObject) {
     let context = env
@@ -25,6 +72,8 @@ fn native_init(mut env: JNIEnv, _class: JClass, root: JObject) {
         .unwrap()
         .l()
         .unwrap();
+
+    init_theme_mode(detect_theme_mode(&mut env, &context));
 
     let page = find_page("/").expect("goyda(android): no #[page(\"/\")] registered");
     let component = (page.factory)();
@@ -64,18 +113,8 @@ pub fn navigate(path: &str) {
     let Some(bridge_lock) = BRIDGE.get() else { return };
     let mut bridge = bridge_lock.lock().unwrap_or_else(|e| e.into_inner());
 
-    let context = env.new_local_ref(bridge.context.as_obj()).expect("local ref failed");
-    let component = (page.factory)();
+    swap_page(&mut env, &mut bridge, page);
 
-    let mut android_backend = AndroidBackend::new(&mut env, &context);
-    let view = component.render(&mut android_backend);
-    let view_jobject = view.as_jobject(&mut env);
-
-    let root = env.new_local_ref(bridge.root.as_obj()).expect("local ref failed");
-    env.call_method(&root, "removeAllViews", sig!(() -> void), &[]).unwrap();
-    env.call_method(&root, "addView", sig!(("android/view/View") -> void), &[JValue::Object(&view_jobject)]).unwrap();
-
-    bridge.ui_tree = component;
     let previous_path = std::mem::replace(&mut bridge.current_path, path.to_string());
     bridge.back_stack.push(previous_path);
 }
@@ -93,24 +132,25 @@ fn native_back(mut env: JNIEnv, _this: JObject) -> jboolean {
     let mut bridge = bridge_lock.lock().unwrap_or_else(|e| e.into_inner());
 
     let Some(previous_path) = bridge.back_stack.pop() else { return JNI_FALSE };
-
     let Some(page) = find_page(&previous_path) else { return JNI_FALSE };
 
-    let context = env.new_local_ref(bridge.context.as_obj()).expect("local ref failed");
-    let component = (page.factory)();
-
-    let mut android_backend = AndroidBackend::new(&mut env, &context);
-    let view = component.render(&mut android_backend);
-    let view_jobject = view.as_jobject(&mut env);
-
-    let root = env.new_local_ref(bridge.root.as_obj()).expect("local ref failed");
-    env.call_method(&root, "removeAllViews", sig!(() -> void), &[]).unwrap();
-    env.call_method(&root, "addView", sig!(("android/view/View") -> void), &[JValue::Object(&view_jobject)]).unwrap();
-
-    bridge.ui_tree = component;
+    swap_page(&mut env, &mut bridge, page);
     bridge.current_path = previous_path;
 
     JNI_TRUE
+}
+
+/// Re-renders whichever page is currently mounted, in place - no route
+/// change, no back-stack entry. Used by [`crate::core::theme::set_theme_mode`]
+/// so a runtime `theme!` switch shows up immediately.
+pub fn rerender() {
+    let Some(jvm) = JVM.get() else { return };
+    let Ok(mut env) = jvm.attach_current_thread() else { return };
+    let Some(bridge_lock) = BRIDGE.get() else { return };
+    let mut bridge = bridge_lock.lock().unwrap_or_else(|e| e.into_inner());
+
+    let Some(page) = find_page(&bridge.current_path) else { return };
+    swap_page(&mut env, &mut bridge, page);
 }
 
 /// Finds the Java/Kotlin class that called into native code (by walking the

@@ -1,9 +1,19 @@
-use goyda::prelude::{page, stack, Component, Color, Align, LayoutDirection, asset, navigate};
+use goyda::prelude::{page, stack, Component, Color, Align, LayoutDirection, asset, navigate, theme};
 
-const COLOR_PRIMARY: Color = Color::Custom(0xFF3949AB);
-const COLOR_MUTED: Color = Color::GRAY;
-const COLOR_SUCCESS: Color = Color::GREEN;
-const COLOR_DANGER: Color = Color::Custom(0xFFE53935);
+// Three variants, not just light/dark - `theme!` generates `Light`/`Dark`/
+// `Solarized` as usize constants (declaration order) plus a `next_theme()`
+// that cycles through all three, rerendering the current page. Each color
+// picks whichever value matches the active variant every time its function
+// is called, so `.color(COLOR_PRIMARY())` stays correct across a switch
+// with no manual re-styling.
+theme! {
+    Light, Dark, Solarized;
+
+    COLOR_PRIMARY: Color::Custom(0xFF3949AB), Color::Custom(0xFF7986CB), Color::Custom(0xFFB58900);
+    COLOR_MUTED: Color::GRAY, Color::Custom(0xFFB0B0B0), Color::Custom(0xFF93A1A1);
+    COLOR_SUCCESS: Color::GREEN, Color::Custom(0xFF81C784), Color::Custom(0xFF859900);
+    COLOR_DANGER: Color::Custom(0xFFE53935), Color::Custom(0xFFEF5350), Color::Custom(0xFFDC322F);
+}
 
 const FONT_SIZE_2XL: i32 = 24;
 
@@ -20,24 +30,24 @@ pub fn counter_page() -> Component {
         image { src: asset!("logo.svg") },
 
         text { "Current: ", count }
-            .color(COLOR_PRIMARY)
+            .color(COLOR_PRIMARY())
             .font_size(FONT_SIZE_2XL)
             .font("fonts/Inter-Bold.ttf"),
 
         text { "Doubled: ", doubled }
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
 
         text { "At zero: ", count == 0 }
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
 
         text { "Logged so far: ", history.len() }
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
 
         button {
             text: "+1",
             on_click: count += 1,
         }
-            .background(COLOR_SUCCESS)
+            .background(COLOR_SUCCESS())
             .px(4)
             .py(2)
             .rounded(2),
@@ -46,7 +56,7 @@ pub fn counter_page() -> Component {
             text: "-1",
             on_click: count -= 1,
         }
-            .background(COLOR_DANGER)
+            .background(COLOR_DANGER())
             .px(4)
             .py(2)
             .rounded(2),
@@ -55,7 +65,7 @@ pub fn counter_page() -> Component {
             text: "Log count",
             on_click: history.push(count),
         }
-            .background(COLOR_PRIMARY)
+            .background(COLOR_PRIMARY())
             .px(4)
             .py(2)
             .rounded(2),
@@ -65,7 +75,7 @@ pub fn counter_page() -> Component {
             on_click: count = doubled,
         }
             .padding(8, 16)
-            .border_color(COLOR_MUTED)
+            .border_color(COLOR_MUTED())
             .border_width(1)
             .opacity(0.8),
 
@@ -73,7 +83,7 @@ pub fn counter_page() -> Component {
             text: "Go to About",
             on_click: navigate("/about"),
         }
-            .background(COLOR_MUTED)
+            .background(COLOR_MUTED())
             .px(4)
             .py(2)
             .rounded(2),
@@ -82,7 +92,7 @@ pub fn counter_page() -> Component {
             text: "Go to Widgets",
             on_click: navigate("/widgets"),
         }
-            .background(COLOR_PRIMARY)
+            .background(COLOR_PRIMARY())
             .px(4)
             .py(2)
             .rounded(2),
@@ -91,13 +101,13 @@ pub fn counter_page() -> Component {
             text: "Go to Styles",
             on_click: navigate("/styles"),
         }
-            .background(COLOR_PRIMARY)
+            .background(COLOR_PRIMARY())
             .px(4)
             .py(2)
             .rounded(2)
     }
     .p(6)
-    .background(COLOR_DANGER)
+    .background(COLOR_DANGER())
 }
 
 #[page("/styles")]
@@ -105,7 +115,7 @@ pub fn styles_page() -> Component {
     let mut plan = String::from("Free");
 
     let rows: Vec<Component> = (0..15)
-        .map(|i| Component::text(move || format!("Scrollable row {i}")).color(COLOR_MUTED))
+        .map(|i| Component::text(move || format!("Scrollable row {i}")).color(COLOR_MUTED()))
         .collect();
 
     stack! {
@@ -113,7 +123,7 @@ pub fn styles_page() -> Component {
         spacing: 12,
 
         text { "Styles & components" }
-            .color(COLOR_PRIMARY)
+            .color(COLOR_PRIMARY())
             .font_size(FONT_SIZE_2XL)
             .bold(),
 
@@ -136,7 +146,7 @@ pub fn styles_page() -> Component {
 
         Component::text(|| "Strikethrough text".to_string())
             .strikethrough()
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
 
         Component::text(|| "Wide letter spacing".to_string())
             .letter_spacing(4),
@@ -148,10 +158,10 @@ pub fn styles_page() -> Component {
         Component::card(vec![
             Component::text(|| "Colored shadow card".to_string()),
         ])
-            .shadow_color(COLOR_PRIMARY),
+            .shadow_color(COLOR_PRIMARY()),
 
         Component::overlay(vec![
-            Component::stack(LayoutDirection::Vertical, 0, vec![]).background(COLOR_PRIMARY).size(80).rounded(8),
+            Component::stack(LayoutDirection::Vertical, 0, vec![]).background(COLOR_PRIMARY()).size(80).rounded(8),
             Component::badge("9", Color::RED).offset(56, 0).z_index(1),
         ]),
 
@@ -160,24 +170,24 @@ pub fn styles_page() -> Component {
         Component::radio_button("plan", "Pro", false)
             .on_checked_change(move |_| plan = "Pro".into()),
         text { "Selected plan: ", plan }
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
 
         Component::textarea("Write something long...")
             .height(70)
             .line_height(28),
 
         text { "Scrollable list (150px tall, mouse wheel to scroll):" }
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
         Component::scroll_view(LayoutDirection::Vertical, 4, rows)
             .height(150)
-            .border_color(COLOR_MUTED)
+            .border_color(COLOR_MUTED())
             .border_width(1),
 
         button {
             text: "Back",
             on_click: navigate("/"),
         }
-            .background(COLOR_MUTED)
+            .background(COLOR_MUTED())
             .px(4)
             .py(2)
             .rounded(2)
@@ -198,45 +208,52 @@ pub fn widgets_page() -> Component {
         spacing: 16,
 
         text { "Widgets demo" }
-            .color(COLOR_PRIMARY)
+            .color(COLOR_PRIMARY())
             .font_size(FONT_SIZE_2XL),
 
         Component::text_input("Type your name...")
             .on_text_changed(move |text| name = text),
 
         text { "Hello, ", name }
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
 
         Component::checkbox("Accept terms", false)
             .on_checked_change(move |checked| accepted = checked),
 
         text { "Accepted: ", accepted }
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
 
         Component::switch(true)
             .on_checked_change(move |checked| notifications = checked),
 
         text { "Notifications: ", notifications }
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
 
         text { "Drag to set: ", loading }
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
 
         Component::progress(move || loading)
             .on_value_changed(move |value| loading = value),
 
-        Component::divider(),
+        button {
+            text: "Next theme",
+            on_click: next_theme(),
+        }
+            .background(COLOR_PRIMARY())
+            .px(4)
+            .py(2)
+            .rounded(2),
 
         Component::spacer(24),
 
         text { "End of demo" }
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
 
         button {
             text: "Back",
             on_click: navigate("/"),
         }
-            .background(COLOR_MUTED)
+            .background(COLOR_MUTED())
             .px(4)
             .py(2)
             .rounded(2)
@@ -252,21 +269,21 @@ pub fn about_page() -> Component {
         spacing: 16,
 
         text { "About" }
-            .color(COLOR_PRIMARY)
+            .color(COLOR_PRIMARY())
             .font_size(FONT_SIZE_2XL),
 
         text { "This page lives at /about and was reached via goyda::navigate()." }
-            .color(COLOR_MUTED),
+            .color(COLOR_MUTED()),
 
         button {
             text: "Back to counter",
             on_click: navigate("/"),
         }
-            .background(COLOR_PRIMARY)
+            .background(COLOR_PRIMARY())
             .px(4)
             .py(2)
             .rounded(2)
     }
     .p(6)
-    .background(COLOR_DANGER)
+    .background(COLOR_DANGER())
 }

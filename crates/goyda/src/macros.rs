@@ -14,6 +14,74 @@ impl<T: std::fmt::Display + Copy + 'static> IntoString for crate::reactive::Memo
     fn to_string_reactive(&self) -> String { format!("{}", self.get()) }
 }
 
+/// Declares any number of named theme variants and a set of colors with one
+/// value per variant, as callable functions - not just light/dark, though
+/// the first two variants should still be a light-equivalent and a
+/// dark-equivalent one (in that order), since that's what OS theme
+/// detection seeds the initial index from (see each platform's
+/// `detect_theme_mode`).
+///
+/// Each variant name becomes a `pub const $name: usize` (its declaration
+/// order), and each color becomes `pub fn $name() -> Color`, resolving to
+/// whichever variant matches [`crate::core::theme::theme_index()`] *at
+/// call time* (so plain `const`s can't do this - the active theme can
+/// change while the app is running). The macro also generates a
+/// `next_theme()` function that cycles through every declared variant and
+/// rerenders the current page, the ergonomic entry point most apps want
+/// (`on_click: next_theme()`) - reach for
+/// [`crate::core::theme::set_theme`] directly (e.g. `set_theme(Dark)`)
+/// instead if jumping straight to one variant instead of cycling.
+///
+/// ```ignore
+/// theme! {
+///     Light, Dark, Solarized;
+///
+///     COLOR_PRIMARY: Color::Custom(0xFF3949AB), Color::Custom(0xFF5C6BC0), Color::Custom(0xFFB58900);
+///     COLOR_MUTED: Color::GRAY, Color::Custom(0xFF9AA0A6), Color::Custom(0xFF93A1A1);
+/// }
+/// // ... .background(COLOR_PRIMARY()) ...
+/// // ... on_click: next_theme() ...
+/// // ... on_click: goyda::set_theme(Dark) ...
+/// ```
+#[macro_export]
+macro_rules! theme {
+    (
+        $( $variant:ident ),+ $(,)? ;
+        $( $name:ident : $( $value:expr ),+ );+ $(;)?
+    ) => {
+        $crate::__theme_indices!(0usize; $($variant),+);
+
+        #[allow(dead_code)]
+        const __THEME_VARIANT_COUNT: usize = [$(stringify!($variant)),+].len();
+
+        /// Cycles to the next theme this block declared (wrapping back to
+        /// the first after the last) and rerenders the current page - see
+        /// the `theme!` macro's own doc comment.
+        pub fn next_theme() {
+            $crate::core::theme::cycle_theme(__THEME_VARIANT_COUNT);
+        }
+
+        $(
+            #[allow(non_snake_case)]
+            pub fn $name() -> $crate::Color {
+                let variants: &[fn() -> $crate::Color] = &[ $( || $value ),+ ];
+                variants[$crate::core::theme::theme_index().min(variants.len() - 1)]()
+            }
+        )+
+    };
+}
+
+#[macro_export]
+#[doc(hidden)]
+macro_rules! __theme_indices {
+    ($idx:expr; $head:ident $(, $tail:ident)*) => {
+        #[allow(non_upper_case_globals)]
+        pub const $head: usize = $idx;
+        $crate::__theme_indices!($idx + 1; $($tail),*);
+    };
+    ($idx:expr;) => {};
+}
+
 #[macro_export]
 macro_rules! parse_children {
     ($children:ident, text { $($part:expr),+ $(,)? } $( . $method:ident ( $($args:tt)* ) )+ , $($tail:tt)*) => {

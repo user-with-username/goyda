@@ -3,7 +3,7 @@ pub use backend::AndroidBackend;
 pub mod bootstrap;
 pub mod classgen;
 
-pub use bootstrap::navigate;
+pub use bootstrap::{navigate, rerender};
 
 use jni::objects::GlobalRef;
 use once_cell::sync::OnceCell;
