@@ -1,6 +1,6 @@
 [workspace]
 members = ["crates/*"]
-exclude = ["example"]
+exclude = ["examples/counter", "examples/theme", "examples/widgets", "examples/styles"]
 resolver = "2"
 
 [profile.dev]

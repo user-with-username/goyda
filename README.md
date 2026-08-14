@@ -32,7 +32,7 @@ pub fn counter_page() -> Component {
 Install the CLI:
 
 ```bash
-cargo install goyda-cli
+cargo install goy
 ```
 
 Scaffold a project:

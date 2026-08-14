@@ -1,0 +1,10 @@
+[package]
+name = "example-widgets"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+goyda = { path = "../../crates/goyda" }
+
+[lib]
+crate-type = ["cdylib", "rlib"]
