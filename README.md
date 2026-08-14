@@ -1,6 +1,6 @@
 # goyda
 
-A Rust UI toolkit that compiles the same app to Windows, Android, and web (wasm), with hot reload while you work.
+A Rust UI toolkit that compiles the same app to Windows, Android, and web
 
 ```rust
 use goyda::prelude::{page, stack, Component, Color};
