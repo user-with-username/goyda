@@ -3,6 +3,10 @@ name = "goyda-cli"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "goy"
+path = "src/main.rs"
+
 [dependencies]
 anyhow = "1.0"
 cargo_metadata = "0.18"

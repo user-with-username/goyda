@@ -21,20 +21,6 @@ fn lib_template(name: &str) -> Result<&'static str> {
     }
 }
 
-/// The generated `Cargo.toml` points straight at this checkout's `goyda`
-/// crate (not published to crates.io yet), resolved from where `goyda-cli`
-/// itself was compiled from - works no matter where `goy new`/`goy init`
-/// is actually invoked from.
-fn goyda_path() -> Result<String> {
-    let goyda_dir = Path::new(env!("CARGO_MANIFEST_DIR"))
-        .parent()
-        .context("goyda-cli has no parent directory")?
-        .join("goyda");
-    let canonical = dunce::canonicalize(&goyda_dir)
-        .with_context(|| format!("Failed to locate the goyda crate at {:?}", goyda_dir))?;
-    Ok(canonical.to_string_lossy().replace('\\', "/"))
-}
-
 fn sanitize_package_name(name: &str) -> String {
     let sanitized: String = name
         .trim()
@@ -54,9 +40,7 @@ fn scaffold(target_dir: &Path, package_name: &str, template: &str) -> Result<()>
     fs::create_dir_all(target_dir.join("src"))
         .with_context(|| format!("Failed to create {:?}", target_dir.join("src")))?;
 
-    let cargo_toml = CARGO_TOML_TEMPLATE
-        .replace("{{package_name}}", package_name)
-        .replace("{{goyda_path}}", &goyda_path()?);
+    let cargo_toml = CARGO_TOML_TEMPLATE.replace("{{package_name}}", package_name);
 
     fs::write(target_dir.join("Cargo.toml"), cargo_toml).context("Failed to write Cargo.toml")?;
     fs::write(target_dir.join("src").join("lib.rs"), lib_src).context("Failed to write src/lib.rs")?;
