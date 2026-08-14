@@ -1,6 +1,6 @@
 [package]
 name = "goyda-utils"
-version = "0.1.2"
+version = "0.1.3"
 edition = "2024"
 description = "Shared value types (colors, style, assets) for goyda - internal, not meant to be used directly"
 license = "MIT"

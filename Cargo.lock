@@ -589,7 +589,7 @@ checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
 name = "goy"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "anyhow",
  "cargo_metadata",
@@ -609,7 +609,7 @@ dependencies = [
 
 [[package]]
 name = "goyda"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "console_error_panic_hook",
  "goyda-derive",
@@ -631,7 +631,7 @@ dependencies = [
 
 [[package]]
 name = "goyda-derive"
-version = "0.1.2"
+version = "0.1.3"
 dependencies = [
  "jni",
  "petgraph",
@@ -642,11 +642,11 @@ dependencies = [
 
 [[package]]
 name = "goyda-macros"
-version = "0.1.2"
+version = "0.1.3"
 
 [[package]]
 name = "goyda-utils"
-version = "0.1.2"
+version = "0.1.3"
 
 [[package]]
 name = "hashbrown"
