@@ -63,3 +63,7 @@ default = []
 android = ["dep:jni", "dep:resvg"]
 web = ["dep:wasm-bindgen", "dep:web-sys", "dep:js-sys", "dep:console_error_panic_hook", "dep:serde", "dep:serde_json"]
 windows = ["dep:windows-sys", "dep:resvg", "dep:image"]
+
+[package.metadata.docs.rs]
+features = ["windows"]
+default-target = "x86_64-pc-windows-msvc"
