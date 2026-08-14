@@ -13,7 +13,6 @@ pub struct BuildContext {
     pub crate_name: String,
     pub lib_name: String,
     pub target_directory: PathBuf,
-    pub start: std::time::Instant,
     /// `--release` on `goy compile`/`goy run` - each platform's `build`
     /// threads this into its own `cargo build` (`--release` flag, `release`
     /// vs `debug` output subdir); `compile` additionally copies the

@@ -39,7 +39,7 @@ pub fn build_windows_app(ctx: &BuildContext) -> Result<PathBuf> {
     write_workspace(&layout, ctx, &goyda_dir, &workspace_lockfile)?;
     s.ok();
 
-    let s = term::spinner_step("host + native library");
+    let s = term::spinner_step("native library");
     let result = compile_workspace(&layout, ctx, None);
     match &result {
         Ok(()) => s.ok(),

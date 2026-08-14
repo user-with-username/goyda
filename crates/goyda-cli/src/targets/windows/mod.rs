@@ -51,8 +51,6 @@ impl PlatformTarget for WindowsTarget {
             .spawn()
             .context("Failed to launch the built .exe")?;
 
-        term::ready("", ctx.start.elapsed());
-
         let stdout = child.stdout.take().expect("child spawned with piped stdout");
         let stderr = child.stderr.take().expect("child spawned with piped stderr");
 
@@ -87,7 +85,6 @@ impl PlatformTarget for WindowsTarget {
             .context("Failed to copy the rebuilt dylib into bin/ under its next generation name")?;
 
         send_hot_swap(hwnd, &generation_path)?;
-        term::ready("", ctx.start.elapsed());
         Ok(true)
     }
 

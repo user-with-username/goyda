@@ -91,10 +91,10 @@ impl PlatformTarget for AndroidTarget {
         result
     }
 
-    fn stream_logs(&self, ctx: &BuildContext, start: Instant) -> Result<()> {
+    fn stream_logs(&self, ctx: &BuildContext, _start: Instant) -> Result<()> {
         let crate_name = ctx.crate_name.clone();
         thread::spawn(move || {
-            let _ = stream_android_logs(&crate_name, start);
+            let _ = stream_android_logs(&crate_name);
         });
         Ok(())
     }
@@ -331,15 +331,13 @@ fn wait_for_pid_via_ps(adb_path: &Path, package: &str, timeout: Duration) -> Res
     )
 }
 
-fn stream_android_logs(crate_name: &str, start: Instant) -> Result<()> {
+fn stream_android_logs(crate_name: &str) -> Result<()> {
     use colored::*;
 
     let adb_path = find_tool("adb")?;
     let package_name = format!("com.goyda.{}", crate_name);
 
     let pid = wait_for_pid_via_ps(&adb_path, &package_name, Duration::from_secs(5))?;
-
-    term::ready("", start.elapsed());
 
     let _ = Command::new(&adb_path)
         .args(&["logcat", "-c"])

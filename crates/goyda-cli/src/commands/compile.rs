@@ -51,7 +51,6 @@ pub fn compile(platform: String, target: String, manifest_dir: PathBuf, release:
         crate_name,
         lib_name,
         target_directory: meta.target_directory.into_std_path_buf(),
-        start,
         release,
     };
 

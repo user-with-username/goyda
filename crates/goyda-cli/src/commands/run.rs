@@ -79,7 +79,6 @@ pub fn execute_run(opts: RunOptions) -> Result<()> {
             crate_name: crate_name.clone(),
             lib_name: lib_name.clone(),
             target_directory: opts.manifest_dir.join("target"),
-            start,
             release: opts.release,
         };
 
@@ -128,15 +127,17 @@ pub fn execute_run(opts: RunOptions) -> Result<()> {
 
         match key.code {
             KeyCode::Char('r') => {
-                term::header("reload", &[]);
-                if let Err(e) = build_and_run(false) {
-                    term::info(&format!("reload failed: {e:#}"));
+                let s = term::spinner_step("reload");
+                match build_and_run(false) {
+                    Ok(()) => s.ok(),
+                    Err(e) => s.fail(&format!("{e:#}")),
                 }
             }
             KeyCode::Char('R') => {
-                term::header("full reload", &[]);
-                if let Err(e) = build_and_run(true) {
-                    term::info(&format!("full reload failed: {e:#}"));
+                let s = term::spinner_step("full reload");
+                match build_and_run(true) {
+                    Ok(()) => s.ok(),
+                    Err(e) => s.fail(&format!("{e:#}")),
                 }
             }
             KeyCode::Char('c') if key.modifiers.contains(KeyModifiers::CONTROL) => return Ok(()),

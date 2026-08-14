@@ -6,7 +6,6 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::sync::OnceLock;
-use std::time::Instant;
 
 use crate::term;
 
@@ -26,10 +25,10 @@ static RELOAD_GENERATION: AtomicU64 = AtomicU64::new(0);
 /// immediately instead of trying (and failing) to bind the same port again.
 static SERVER_STARTED: OnceLock<()> = OnceLock::new();
 
-pub fn serve_and_open(dist_dir: &Path, start: Instant) -> Result<()> {
+pub fn serve_and_open(dist_dir: &Path) -> Result<()> {
     if SERVER_STARTED.get().is_some() {
         RELOAD_GENERATION.fetch_add(1, Ordering::Relaxed);
-        term::ready("rebuilt - the dev server will pick it up on the next reload/poll", start.elapsed());
+        term::info("rebuilt - the dev server will pick it up on the next reload/poll");
         return Ok(());
     }
 
@@ -48,7 +47,7 @@ pub fn serve_and_open(dist_dir: &Path, start: Instant) -> Result<()> {
     let port = listener.local_addr().context("Failed to read local dev server address")?.port();
     let url = format!("http://127.0.0.1:{port}/");
 
-    term::ready(&format!("{url} (Ctrl+C to stop)"), start.elapsed());
+    term::info(&format!("{url} (Ctrl+C to stop)"));
     open_browser(&url);
 
     let _ = SERVER_STARTED.set(());

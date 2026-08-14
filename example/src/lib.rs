@@ -40,7 +40,7 @@ pub fn counter_page() -> Component {
 
         image { src: asset!("logo.svg") },
 
-        text { "currffenвt: ", count }
+        text { "currrent: ", count }
             .color(COLOR_PRIMARY())
             .font_size(FONT_SIZE_2XL)
             .font("fonts/Inter-Bold.ttf"),

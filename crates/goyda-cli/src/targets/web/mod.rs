@@ -26,7 +26,7 @@ impl PlatformTarget for WebTarget {
         build::build_web_app(ctx)
     }
 
-    fn run(&self, ctx: &BuildContext, artifact_path: &Path) -> Result<()> {
-        serve::serve_and_open(artifact_path, ctx.start)
+    fn run(&self, _ctx: &BuildContext, artifact_path: &Path) -> Result<()> {
+        serve::serve_and_open(artifact_path)
     }
 }
