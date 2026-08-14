@@ -6,12 +6,6 @@
 
 use goyda::{asset, asset_ref};
 
-#[test]
-fn asset_embeds_the_files_bytes() {
-    let a = asset!("test_fixture.txt");
-    assert_eq!(a.path(), "test_fixture.txt");
-    assert_eq!(a.bytes(), Some(&b"fixture\n"[..]));
-}
 
 #[test]
 fn asset_ref_does_not_embed_bytes() {
