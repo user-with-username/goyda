@@ -31,13 +31,13 @@ pub fn counter_page() -> Component {
 
 Install the CLI:
 
-```
+```bash
 cargo install goyda-cli
 ```
 
 Scaffold a project:
 
-```
+```bash
 goy new my-app
 cd my-app
 goy run windows
