@@ -4,7 +4,7 @@
 //! compile time, so they're exercised against the `assets/test_fixture.txt`
 //! fixture checked in alongside these tests.
 
-use goyda::{asset, asset_ref};
+use goyda::{asset_ref};
 
 #[test]
 fn asset_ref_does_not_embed_bytes() {
