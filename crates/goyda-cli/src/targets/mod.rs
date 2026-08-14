@@ -146,3 +146,67 @@ impl FromStr for Platform {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn profile_dir_is_release_or_debug() {
+        let ctx = |release| BuildContext {
+            manifest_dir: PathBuf::new(),
+            target_triple: String::new(),
+            crate_name: String::new(),
+            lib_name: String::new(),
+            target_directory: PathBuf::new(),
+            release,
+        };
+        assert_eq!(ctx(true).profile_dir(), "release");
+        assert_eq!(ctx(false).profile_dir(), "debug");
+    }
+
+    #[test]
+    fn platform_as_str_round_trips_through_from_str() {
+        for &p in Platform::all() {
+            assert_eq!(Platform::from_str(p.as_str()).unwrap(), p);
+        }
+    }
+
+    #[test]
+    fn from_str_rejects_unknown_platforms() {
+        assert!(Platform::from_str("nope").is_err());
+    }
+
+    #[test]
+    fn all_lists_every_variant_exactly_once() {
+        let all = Platform::all();
+        assert_eq!(all.len(), 4);
+        assert!(all.contains(&Platform::Android));
+        assert!(all.contains(&Platform::Ios));
+        assert!(all.contains(&Platform::Web));
+        assert!(all.contains(&Platform::Windows));
+    }
+
+    #[test]
+    fn ios_is_not_implemented_others_are() {
+        assert!(!Platform::Ios.handler().is_implemented());
+        assert!(Platform::Android.handler().is_implemented());
+        assert!(Platform::Web.handler().is_implemented());
+        assert!(Platform::Windows.handler().is_implemented());
+    }
+
+    #[test]
+    fn validate_triple_accepts_supported_and_rejects_unsupported() {
+        let handler = Platform::Windows.handler();
+        let supported = handler.supported_triples()[0];
+        assert!(handler.validate_triple(supported).is_ok());
+        assert!(handler.validate_triple("not-a-real-triple").is_err());
+    }
+
+    #[test]
+    fn handler_id_matches_the_platform_it_was_created_from() {
+        for &p in Platform::all() {
+            assert_eq!(p.handler().id(), p);
+        }
+    }
+}

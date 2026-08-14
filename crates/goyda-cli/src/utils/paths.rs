@@ -53,3 +53,23 @@ pub fn find_tool(name: &str) -> Result<PathBuf> {
         name
     )
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn normalize_path_returns_a_nonexistent_path_unchanged() {
+        let result = normalize_path("this/path/does/not/exist/anywhere").unwrap();
+        assert_eq!(result, "this/path/does/not/exist/anywhere");
+    }
+
+    #[test]
+    fn normalize_path_canonicalizes_an_existing_path_without_a_verbatim_prefix() {
+        let dir = std::env::temp_dir();
+        let result = normalize_path(&dir).unwrap();
+        assert!(!result.starts_with(r"\\?\"), "got: {result}");
+        // The canonicalized path must still point at the same directory.
+        assert!(Path::new(&result).exists());
+    }
+}

@@ -96,3 +96,105 @@ fn collect_classes_rec(dir: &Path, files: &mut Vec<String>) -> Result<()> {
     }
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::sync::atomic::{AtomicUsize, Ordering};
+
+    static COUNTER: AtomicUsize = AtomicUsize::new(0);
+
+    struct TempDir(std::path::PathBuf);
+
+    impl TempDir {
+        fn new() -> Self {
+            let n = COUNTER.fetch_add(1, Ordering::Relaxed);
+            let path = std::env::temp_dir().join(format!("goyda_cli_fs_test_{}_{n}", std::process::id()));
+            fs::create_dir_all(&path).unwrap();
+            Self(path)
+        }
+    }
+
+    impl Drop for TempDir {
+        fn drop(&mut self) {
+            let _ = fs::remove_dir_all(&self.0);
+        }
+    }
+
+    #[test]
+    fn run_command_succeeds_on_a_zero_exit_status() {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "exit", "0"]);
+        assert!(run_command(&mut cmd, "should not fail").is_ok());
+    }
+
+    #[test]
+    fn run_command_errors_on_a_nonzero_exit_status() {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "exit", "1"]);
+        assert!(run_command(&mut cmd, "expected failure").is_err());
+    }
+
+    #[test]
+    fn run_command_quiet_succeeds_on_a_zero_exit_status() {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "exit", "0"]);
+        assert!(run_command_quiet(&mut cmd, "should not fail").is_ok());
+    }
+
+    #[test]
+    fn run_command_quiet_error_includes_stderr_output() {
+        let mut cmd = Command::new("cmd");
+        cmd.args(["/C", "echo something went wrong 1>&2 & exit 1"]);
+        let err = run_command_quiet(&mut cmd, "expected failure").unwrap_err();
+        let msg = format!("{err:#}");
+        assert!(msg.contains("expected failure"));
+        assert!(msg.contains("something went wrong"));
+    }
+
+    #[test]
+    fn copy_dir_recursive_is_a_noop_when_source_is_missing() {
+        let dst = TempDir::new();
+        let missing_src = dst.0.join("does-not-exist");
+        assert!(copy_dir_recursive(&missing_src, &dst.0.join("out")).is_ok());
+        assert!(!dst.0.join("out").exists());
+    }
+
+    #[test]
+    fn copy_dir_recursive_copies_files_and_nested_directories() {
+        let src = TempDir::new();
+        let dst = TempDir::new();
+
+        fs::write(src.0.join("a.txt"), "a").unwrap();
+        fs::create_dir(src.0.join("nested")).unwrap();
+        fs::write(src.0.join("nested").join("b.txt"), "b").unwrap();
+
+        copy_dir_recursive(&src.0, &dst.0).unwrap();
+
+        assert_eq!(fs::read_to_string(dst.0.join("a.txt")).unwrap(), "a");
+        assert_eq!(fs::read_to_string(dst.0.join("nested").join("b.txt")).unwrap(), "b");
+    }
+
+    #[test]
+    fn collect_classes_finds_class_files_recursively_and_ignores_others() {
+        let dir = TempDir::new();
+        fs::write(dir.0.join("A.class"), "").unwrap();
+        fs::write(dir.0.join("readme.txt"), "").unwrap();
+        fs::create_dir(dir.0.join("pkg")).unwrap();
+        fs::write(dir.0.join("pkg").join("B.class"), "").unwrap();
+
+        let mut classes = collect_classes(&dir.0).unwrap();
+        classes.sort();
+
+        assert_eq!(classes.len(), 2);
+        assert!(classes[0].ends_with("A.class"));
+        assert!(classes[1].ends_with("B.class"));
+    }
+
+    #[test]
+    fn collect_classes_on_a_missing_directory_returns_empty() {
+        let dir = TempDir::new();
+        let classes = collect_classes(&dir.0.join("nope")).unwrap();
+        assert!(classes.is_empty());
+    }
+}

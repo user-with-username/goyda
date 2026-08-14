@@ -146,3 +146,22 @@ pub fn ready(msg: &str, elapsed: Duration) {
     );
     println!();
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn fmt_dur_uses_whole_milliseconds_under_one_second() {
+        assert_eq!(fmt_dur(Duration::from_millis(0)), "0ms");
+        assert_eq!(fmt_dur(Duration::from_millis(1)), "1ms");
+        assert_eq!(fmt_dur(Duration::from_millis(999)), "999ms");
+    }
+
+    #[test]
+    fn fmt_dur_switches_to_seconds_with_two_decimals_at_one_second() {
+        assert_eq!(fmt_dur(Duration::from_millis(1000)), "1.00s");
+        assert_eq!(fmt_dur(Duration::from_millis(1500)), "1.50s");
+        assert_eq!(fmt_dur(Duration::from_secs(73)), "73.00s");
+    }
+}
