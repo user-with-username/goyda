@@ -6,7 +6,6 @@
 
 use goyda::{asset, asset_ref};
 
-
 #[test]
 fn asset_ref_does_not_embed_bytes() {
     let a = asset_ref!("test_fixture.txt");
