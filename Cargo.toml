@@ -3,6 +3,14 @@ members = ["crates/*"]
 exclude = ["examples/counter", "examples/theme", "examples/widgets", "examples/styles"]
 resolver = "2"
 
+[workspace.lints.clippy]
+all = { level = "deny", priority = -1 }
+new_ret_no_self = "allow"
+type_complexity = "allow"
+crate_in_macro_def = "allow"
+explicit_counter_loop = "allow"
+missing_const_for_thread_local = "allow"
+
 [profile.dev]
 codegen-units = 1
 

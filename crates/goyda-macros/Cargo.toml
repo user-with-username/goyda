@@ -5,6 +5,9 @@ edition = "2021"
 description = "Declarative listener macros for goyda - internal, not meant to be used directly"
 license = "MIT"
 
+[lints]
+workspace = true
+
 [dependencies]
 # Note: this crate only ever *emits* paths like `::jni::...`, `::paste::paste!`,
 # and `::inventory::submit!` as tokens inside macro_rules! bodies - those

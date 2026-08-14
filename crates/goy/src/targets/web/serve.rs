@@ -81,7 +81,7 @@ fn bind_server(preferred_port: u16) -> Result<TcpListener> {
 
 fn open_browser(url: &str) {
     let result = if cfg!(target_os = "windows") {
-        Command::new("cmd").args(&["/C", "start", "", url]).status()
+        Command::new("cmd").args(["/C", "start", "", url]).status()
     } else if cfg!(target_os = "macos") {
         Command::new("open").arg(url).status()
     } else {
@@ -114,15 +114,13 @@ fn percent_decode(input: &str) -> String {
     let mut out = Vec::with_capacity(bytes.len());
     let mut i = 0;
     while i < bytes.len() {
-        if bytes[i] == b'%' && i + 2 < bytes.len() {
-            if let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3]) {
-                if let Ok(byte) = u8::from_str_radix(hex, 16) {
+        if bytes[i] == b'%' && i + 2 < bytes.len()
+            && let Ok(hex) = std::str::from_utf8(&bytes[i + 1..i + 3])
+                && let Ok(byte) = u8::from_str_radix(hex, 16) {
                     out.push(byte);
                     i += 3;
                     continue;
                 }
-            }
-        }
         out.push(bytes[i]);
         i += 1;
     }

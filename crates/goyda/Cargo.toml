@@ -2,8 +2,12 @@
 name = "goyda"
 version = "0.1.0"
 edition = "2024"
-description = "A Rust UI toolkit that compiles the same app to Windows, Android, and web, with hot reload"
+description = "A Rust UI toolkit that compiles the same app to Windows, Android, and web"
 license = "MIT"
+readme = "README.md"
+
+[lints]
+workspace = true
 
 [lib]
 crate-type = ["rlib", "dylib"]

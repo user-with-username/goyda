@@ -62,12 +62,11 @@ fn resolve_color(value: &StyleValue) -> Option<i32> {
 
 fn resolve_length(value: &StyleValue) -> Option<i32> {
     let v = goyda_utils::style::resolve_length(value);
-    if v.is_none() {
-        if let StyleValue::Spacing(_scale) = value {
+    if v.is_none()
+        && let StyleValue::Spacing(_scale) = value {
             #[cfg(debug_assertions)]
             eprintln!("goyda(android): spacing scale index {_scale} out of range");
         }
-    }
     v.map(|v| (v * 3.0) as i32)
 }
 
@@ -266,15 +265,14 @@ fn get_stroke_state(env: &mut JNIEnv, view: &JObject) -> (i32, i32) {
         .ok()
         .and_then(|r| r.l().ok());
 
-    if let Some(tag) = tag {
-        if !tag.is_null() && env.is_instance_of(&tag, "[I").unwrap_or(false) {
+    if let Some(tag) = tag
+        && !tag.is_null() && env.is_instance_of(&tag, "[I").unwrap_or(false) {
             let arr = jni::objects::JIntArray::from(tag);
             let mut buf = [0i32; 2];
             if env.get_int_array_region(&arr, 0, &mut buf).is_ok() {
                 return (buf[0], buf[1]);
             }
         }
-    }
 
     (default_width, DEFAULT_BORDER_COLOR)
 }
@@ -1135,8 +1133,8 @@ impl BackendUpdater for AndroidUpdater {
     type PlatformView = AndroidView;
 
     fn apply_update(&mut self, view: &Self::PlatformView, update: Update) {
-        if let Some(jvm) = JVM.get() {
-            if let Ok(mut env) = jvm.attach_current_thread() {
+        if let Some(jvm) = JVM.get()
+            && let Ok(mut env) = jvm.attach_current_thread() {
                 match update {
                     Update::SetText(content) => {
                         let java_string = env.new_string(&content).unwrap();
@@ -1151,7 +1149,6 @@ impl BackendUpdater for AndroidUpdater {
                     }
                 }
             }
-        }
     }
 }
 
@@ -1340,14 +1337,13 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
         let group_owned = group.to_string();
         let target = view.global_ref.clone();
         let callback: Rc<dyn Fn(Event)> = Rc::new(move |_e| {
-            if let Some(jvm) = JVM.get() {
-                if let Ok(mut env) = jvm.attach_current_thread() {
+            if let Some(jvm) = JVM.get()
+                && let Ok(mut env) = jvm.attach_current_thread() {
                     let target_view = AndroidView {
                         global_ref: target.clone(),
                     };
                     select_radio(&mut env, &group_owned, &target_view);
                 }
-            }
         });
         unsafe {
             crate::listeners::on_click::attach(self, &view, callback);
@@ -1400,7 +1396,7 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
     fn create_spacer(&mut self, size: i32) -> Self::PlatformView {
         let view = new_widget!(self.env, "android/view/View", self.context);
 
-        let scaled = (size * 3) as i32;
+        let scaled = size * 3;
         set_layout_params!(self.env, &view, scaled, scaled);
 
         AndroidView {
@@ -1435,7 +1431,7 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
         jcall!(self.env, &layout, "setOrientation", ((int) -> void), [JValue::Int(orientation)])
             .unwrap();
 
-        let real_spacing = (spacing * 3) as i32;
+        let real_spacing = spacing * 3;
 
         for (idx, child_view) in children.into_iter().enumerate() {
             let local_child = self

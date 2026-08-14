@@ -53,6 +53,22 @@ jobs:
           git commit -m "chore: bump versions [skip ci] [skip publish]"
           git push origin HEAD:main
 
+      # docs.rs builds and hosts docs automatically once a crate is
+      # published - this step doesn't publish anything itself, it just
+      # generates the same docs here first so a broken doc comment (bad
+      # intra-doc link, doctest that doesn't compile, ...) fails the
+      # workflow before anything ships instead of only showing up on
+      # docs.rs afterwards.
+      - name: Build docs
+        shell: bash
+        env:
+          RUSTDOCFLAGS: -D warnings
+        run: |
+          set -e
+          cargo doc -p goyda-utils -p goyda-macros -p goyda-derive --no-deps
+          cargo doc -p goyda --features windows --no-deps
+          cargo doc -p goy --no-deps
+
       # Published in dependency order - goyda depends on the first three
       # by path+version, goy depends on goyda the same way. A short pause
       # after each publish gives the crates.io index time to catch up

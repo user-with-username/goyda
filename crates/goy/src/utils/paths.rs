@@ -25,7 +25,7 @@ pub fn find_tool(name: &str) -> Result<PathBuf> {
         return Ok(path);
     }
     #[cfg(windows)]
-    if let Ok(path) = which(&format!("{}.exe", name)) {
+    if let Ok(path) = which(format!("{}.exe", name)) {
         return Ok(path);
     }
     let android_home = std::env::var("ANDROID_HOME")
@@ -33,20 +33,19 @@ pub fn find_tool(name: &str) -> Result<PathBuf> {
         .ok();
     if let Some(home) = android_home {
         let build_tools_dir = Path::new(&home).join("build-tools");
-        if build_tools_dir.exists() {
-            if let Ok(entries) = fs::read_dir(&build_tools_dir) {
+        if build_tools_dir.exists()
+            && let Ok(entries) = fs::read_dir(&build_tools_dir) {
                 for entry in entries.filter_map(|e| e.ok()) {
                     let version_dir = entry.path();
                     if version_dir.is_dir() {
                         #[cfg(windows)]
-                        let tool_path = version_dir.join(&format!("{}.exe", name));
+                        let tool_path = version_dir.join(format!("{}.exe", name));
                         if tool_path.exists() {
                             return Ok(tool_path);
                         }
                     }
                 }
             }
-        }
     }
     anyhow::bail!(
         "{} not found. Make sure the Android SDK build-tools are on PATH, or set ANDROID_HOME",

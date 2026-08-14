@@ -25,7 +25,7 @@ fn rasterize_svg(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
 
 fn rgba_to_premultiplied_bgra(rgba: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(rgba.len());
-    for px in rgba.chunks_exact(4) {
+    for px in rgba.as_chunks::<4>().0 {
         let [r, g, b, a] = [px[0] as u32, px[1] as u32, px[2] as u32, px[3] as u32];
         out.push((b * a / 255) as u8);
         out.push((g * a / 255) as u8);

@@ -50,11 +50,10 @@ define_listener! {
             crate::windows::register_raw_hook(view.hwnd, Rc::new(move |msg, _wparam, _lparam| {
                 match msg {
                     WM_LBUTTONDOWN => pressed.set(true),
-                    WM_LBUTTONUP => {
-                        if pressed.replace(false) {
+                    WM_LBUTTONUP
+                        if pressed.replace(false) => {
                             callback(Event::Click);
                         }
-                    }
                     _ => {}
                 }
             }));

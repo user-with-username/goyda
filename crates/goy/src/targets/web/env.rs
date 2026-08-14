@@ -20,13 +20,12 @@ impl WebBuildEnvironment {
     pub fn prepare(required_version: &str) -> Result<Self> {
         ensure_wasm_target_installed()?;
 
-        if let Ok(path) = find_tool("wasm-bindgen") {
-            if installed_version(&path).as_deref() == Some(required_version) {
+        if let Ok(path) = find_tool("wasm-bindgen")
+            && installed_version(&path).as_deref() == Some(required_version) {
                 return Ok(Self {
                     wasm_bindgen_bin: path,
                 });
             }
-        }
 
         let home_dir = dirs::home_dir().context("Could not locate the user's home directory")?;
         let tool_root = home_dir
@@ -71,7 +70,7 @@ fn installed_version(path: &Path) -> Option<String> {
 
 fn ensure_wasm_target_installed() -> Result<()> {
     let listed = Command::new("rustup")
-        .args(&["target", "list", "--installed"])
+        .args(["target", "list", "--installed"])
         .output();
 
     let already_installed = matches!(
@@ -87,7 +86,7 @@ fn ensure_wasm_target_installed() -> Result<()> {
     }
 
     let mut cmd = Command::new("rustup");
-    cmd.args(&["target", "add", "wasm32-unknown-unknown"]);
+    cmd.args(["target", "add", "wasm32-unknown-unknown"]);
     run_command(
         &mut cmd,
         "Failed to install the wasm32-unknown-unknown target via rustup",
@@ -96,7 +95,7 @@ fn ensure_wasm_target_installed() -> Result<()> {
 
 fn install_wasm_bindgen_cli(version: &str, tool_root: &Path) -> Result<()> {
     let mut cmd = Command::new("cargo");
-    cmd.args(&[
+    cmd.args([
         "install",
         "wasm-bindgen-cli",
         "--version",

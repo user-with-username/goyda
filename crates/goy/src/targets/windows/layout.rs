@@ -7,7 +7,7 @@ use std::path::{Path, PathBuf};
 /// has to keep two independently rebuildable pieces straight - the
 /// persistent host and the consumer's reloadable `cdylib` - and, critically,
 /// build *both* through one single `cargo build --workspace` invocation (see
-/// [`workspace_dir`]/`build.rs`'s doc comments) rather than two separate
+/// [`WindowsAppLayout::workspace_dir`]/`build.rs`'s doc comments) rather than two separate
 /// ones: `rustc` bakes a per-compilation-unit disambiguator hash into every
 /// symbol name, and that hash is *not* guaranteed to match across two
 /// separate `cargo build` processes even with an identical `Cargo.lock` and

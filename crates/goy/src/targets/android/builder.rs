@@ -29,23 +29,23 @@ pub fn build_apk_package(layout: &AndroidAppLayout, env: &BuildEnvironment) -> R
     let _cleanup = defer_cleanup(vec![apk_path.to_path_buf(), aligned_apk_path.to_path_buf()]);
 
     run_command(
-        Command::new(&aapt2_path).args(&[
+        Command::new(&aapt2_path).args([
             "link",
             "-I",
             &normalize_path(android_jar)?,
             "--manifest",
-            &normalize_path(&manifest)?,
+            &normalize_path(manifest)?,
             "--min-sdk-version",
             "21",
             "--target-sdk-version",
             "33",
             "-o",
-            &normalize_path(&apk_path)?,
+            &normalize_path(apk_path)?,
         ]),
         "Building resources via aapt2 link failed",
     )?;
 
-    let java_sources = collect_java_sources(&layout.java_src_dir())?;
+    let java_sources = collect_java_sources(layout.java_src_dir())?;
     if java_sources.is_empty() {
         anyhow::bail!(
             "No .java files found in directory {:?}",
@@ -57,7 +57,7 @@ pub fn build_apk_package(layout: &AndroidAppLayout, env: &BuildEnvironment) -> R
         "-cp".to_string(),
         normalize_path(android_jar)?,
         "-d".to_string(),
-        normalize_path(&classes_dir)?,
+        normalize_path(classes_dir)?,
         "--release".to_string(),
         "8".to_string(),
     ];
@@ -70,7 +70,7 @@ pub fn build_apk_package(layout: &AndroidAppLayout, env: &BuildEnvironment) -> R
         "Compiling Java sources via javac failed",
     )?;
 
-    let class_files = collect_classes(&classes_dir)?;
+    let class_files = collect_classes(classes_dir)?;
     if class_files.is_empty() {
         anyhow::bail!(
             "No compiled .class files found in directory {:?}",
@@ -87,7 +87,7 @@ pub fn build_apk_package(layout: &AndroidAppLayout, env: &BuildEnvironment) -> R
         "--min-api".into(),
         "21".into(),
         "--output".into(),
-        normalize_path(&build_dir)?,
+        normalize_path(build_dir)?,
         "--lib".into(),
         normalize_path(android_jar)?,
     ];
@@ -101,15 +101,15 @@ pub fn build_apk_package(layout: &AndroidAppLayout, env: &BuildEnvironment) -> R
     let dex_path = build_dir.join("classes.dex");
     let lib_dir = layout.app_dir().join("lib");
 
-    repack_apk_with_dex_and_libs(&apk_path, &dex_path, &lib_dir, layout.assets_dir())
+    repack_apk_with_dex_and_libs(apk_path, &dex_path, &lib_dir, layout.assets_dir())
         .context("Failed to pack dex, native libraries and assets into the APK")?;
 
     run_command(
-        Command::new(&zipalign_path).args(&[
+        Command::new(&zipalign_path).args([
             "-f",
             "4",
-            &normalize_path(&apk_path)?,
-            &normalize_path(&aligned_apk_path)?,
+            &normalize_path(apk_path)?,
+            &normalize_path(aligned_apk_path)?,
         ]),
         "Aligning the package via zipalign failed",
     )?;
@@ -118,24 +118,23 @@ pub fn build_apk_package(layout: &AndroidAppLayout, env: &BuildEnvironment) -> R
         anyhow::bail!("File to sign not found: {:?}", aligned_apk_path);
     }
 
-    if let Some(parent) = final_apk_path.parent() {
-        if !parent.exists() {
+    if let Some(parent) = final_apk_path.parent()
+        && !parent.exists() {
             fs::create_dir_all(parent)
                 .context("Failed to create the output directory for the final APK")?;
         }
-    }
 
     let key_pass_arg = format!("pass:{}", crate::constants::DEFAULT_KEY_PASS);
     run_command(
-        Command::new(&apksigner_path).args(&[
+        Command::new(&apksigner_path).args([
             "sign",
             "--ks",
             &normalize_path(keystore_path)?,
             "--ks-pass",
             &key_pass_arg,
             "--out",
-            &normalize_path(&final_apk_path)?,
-            &normalize_path(&aligned_apk_path)?,
+            &normalize_path(final_apk_path)?,
+            &normalize_path(aligned_apk_path)?,
         ]),
         "Signing the app via apksigner failed",
     )?;

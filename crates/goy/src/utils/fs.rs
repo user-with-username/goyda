@@ -96,7 +96,7 @@ fn collect_classes_rec(dir: &Path, files: &mut Vec<String>) -> Result<()> {
             let path = entry.path();
             if path.is_dir() {
                 collect_classes_rec(&path, files)?;
-            } else if path.extension().map_or(false, |ext| ext == "class") {
+            } else if path.extension().is_some_and(|ext| ext == "class") {
                 files.push(path.to_str().context("Invalid class path")?.to_string());
             }
         }

@@ -115,7 +115,7 @@ impl PlatformTarget for AndroidTarget {
         // `app_gen*.so` a previous session's quick reloads pushed there -
         // so generation numbering starts clean at 0 again too.
         let _ = Command::new(&adb_path)
-            .args(&["uninstall", &package_name])
+            .args(["uninstall", &package_name])
             .output();
         Ok(())
     }
@@ -170,7 +170,7 @@ impl PlatformTarget for AndroidTarget {
 /// process - what [`AndroidTarget::quick_reload`] gates on.
 fn find_running_pid(adb_path: &Path, package: &str) -> Result<Option<String>> {
     let output = Command::new(adb_path)
-        .args(&["shell", "ps", "-A", "-o", "PID,NAME"])
+        .args(["shell", "ps", "-A", "-o", "PID,NAME"])
         .output()
         .context("Failed to run ps on device")?;
 
@@ -198,11 +198,11 @@ fn push_next_generation(adb_path: &Path, package: &str, local_so: &Path) -> Resu
     // called `Context.getFilesDir()` (goyda's android backend never does) -
     // a no-op if it's already there.
     let _ = Command::new(adb_path)
-        .args(&["shell", "run-as", package, "mkdir", "-p", "files"])
+        .args(["shell", "run-as", package, "mkdir", "-p", "files"])
         .output();
 
     let list_output = Command::new(adb_path)
-        .args(&["shell", "run-as", package, "ls", "files/"])
+        .args(["shell", "run-as", package, "ls", "files/"])
         .output()
         .context("Failed to list the app's private storage via run-as")?;
     let listing = String::from_utf8_lossy(&list_output.stdout);
@@ -238,7 +238,7 @@ fn push_next_generation(adb_path: &Path, package: &str, local_so: &Path) -> Resu
         "copying the rebuilt native library into the app's private storage failed",
     )?;
     let _ = Command::new(adb_path)
-        .args(&["shell", "rm", &tmp_path])
+        .args(["shell", "rm", &tmp_path])
         .output();
 
     Ok(final_path)
@@ -332,12 +332,11 @@ fn parse_log_level(line: &str) -> Option<(char, &str)> {
         let level_candidate = parts[4];
         if level_candidate.len() == 1 {
             let ch = level_candidate.chars().next().unwrap();
-            if matches!(ch, 'V' | 'D' | 'I' | 'W' | 'E' | 'F') {
-                if let Some(pos) = line.find(&format!(" {} ", ch)) {
+            if matches!(ch, 'V' | 'D' | 'I' | 'W' | 'E' | 'F')
+                && let Some(pos) = line.find(&format!(" {} ", ch)) {
                     let after_level = &line[pos + 3..]; // skip " " + level + " "
                     return Some((ch, after_level));
                 }
-            }
         }
     }
     None
@@ -347,7 +346,7 @@ fn wait_for_pid_via_ps(adb_path: &Path, package: &str, timeout: Duration) -> Res
     let start = Instant::now();
     while start.elapsed() < timeout {
         let output = Command::new(adb_path)
-            .args(&["shell", "ps", "-A", "-o", "PID,NAME"])
+            .args(["shell", "ps", "-A", "-o", "PID,NAME"])
             .output()
             .context("Failed to run ps on device")?;
 
@@ -375,10 +374,10 @@ fn stream_android_logs(crate_name: &str) -> Result<()> {
 
     let pid = wait_for_pid_via_ps(&adb_path, &package_name, Duration::from_secs(5))?;
 
-    let _ = Command::new(&adb_path).args(&["logcat", "-c"]).status();
+    let _ = Command::new(&adb_path).args(["logcat", "-c"]).status();
 
     let mut child = Command::new(&adb_path)
-        .args(&["logcat", "-v", "time", "--pid", &pid])
+        .args(["logcat", "-v", "time", "--pid", &pid])
         .stdout(Stdio::piped())
         .spawn()
         .context("Failed to spawn logcat")?;

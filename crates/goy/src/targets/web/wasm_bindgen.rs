@@ -11,7 +11,7 @@ pub fn run_wasm_bindgen(
     out_name: &str,
 ) -> Result<()> {
     let mut cmd = Command::new(bin);
-    cmd.args(&[
+    cmd.args([
         "--target",
         "web",
         "--out-dir",

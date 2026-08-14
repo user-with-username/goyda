@@ -27,7 +27,7 @@ fn is_windows_host() -> bool {
 }
 
 fn check_cargo_ndk() -> Result<()> {
-    let output = Command::new("cargo").args(&["ndk", "--version"]).output();
+    let output = Command::new("cargo").args(["ndk", "--version"]).output();
 
     match output {
         Ok(o) if o.status.success() => Ok(()),
@@ -94,7 +94,7 @@ pub fn build_native_library(ctx: &BuildContext) -> Result<()> {
 /// other native libraries same as any other runtime dependency.
 fn find_std_dylib(target_triple: &str) -> Result<Option<PathBuf>> {
     let output = Command::new("rustc")
-        .args(&["--print", "target-libdir", "--target", target_triple])
+        .args(["--print", "target-libdir", "--target", target_triple])
         .output()
         .context("Failed to run `rustc --print target-libdir`")?;
     if !output.status.success() {

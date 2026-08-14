@@ -131,13 +131,10 @@ fn latest_generation_dylib(layout: &WindowsAppLayout) -> Option<PathBuf> {
         if let Some(rest) = name
             .strip_prefix("app_gen")
             .and_then(|r| r.strip_suffix(".dll"))
-        {
-            if let Ok(n) = rest.parse::<u32>() {
-                if best.as_ref().map_or(true, |(m, _)| n > *m) {
+            && let Ok(n) = rest.parse::<u32>()
+                && best.as_ref().is_none_or(|(m, _)| n > *m) {
                     best = Some((n, entry.path()));
                 }
-            }
-        }
     }
     best.map(|(_, p)| p)
 }

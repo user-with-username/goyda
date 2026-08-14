@@ -28,8 +28,8 @@ impl UiMacroTransformer {
                 continue;
             }
 
-            if let TokenTree::Ident(ident) = &trees[i] {
-                if self.all_mut_vars.contains(ident) {
+            if let TokenTree::Ident(ident) = &trees[i]
+                && self.all_mut_vars.contains(ident) {
                     let is_property_key = if i + 1 < trees.len() {
                         if let TokenTree::Punct(p) = &trees[i + 1] {
                             p.as_char() == ':'
@@ -42,8 +42,8 @@ impl UiMacroTransformer {
 
                     let next_is_dot = matches!(&trees.get(i + 1), Some(TokenTree::Punct(p)) if p.as_char() == '.');
 
-                    if !is_property_key && next_is_dot {
-                        if let Some(TokenTree::Ident(member)) = trees.get(i + 2).cloned() {
+                    if !is_property_key && next_is_dot
+                        && let Some(TokenTree::Ident(member)) = trees.get(i + 2).cloned() {
                             let member_name = member.to_string();
 
                             if matches!(
@@ -98,11 +98,10 @@ impl UiMacroTransformer {
                                 let mut right_tokens = Vec::new();
                                 let mut j = i + 4;
                                 while j < trees.len() {
-                                    if let TokenTree::Punct(p) = &trees[j] {
-                                        if p.as_char() == ',' || p.as_char() == ';' {
+                                    if let TokenTree::Punct(p) = &trees[j]
+                                        && (p.as_char() == ',' || p.as_char() == ';') {
                                             break;
                                         }
-                                    }
                                     right_tokens.push(trees[j].clone());
                                     j += 1;
                                 }
@@ -143,15 +142,14 @@ impl UiMacroTransformer {
                             i += replacement_trees.len();
                             continue;
                         }
-                    }
 
                     let is_plain_eq = i + 1 < trees.len()
                         && matches!(&trees[i + 1], TokenTree::Punct(p) if p.as_char() == '=')
                         && !matches!(trees.get(i + 2), Some(TokenTree::Punct(p)) if p.as_char() == '=');
 
                     if !is_property_key {
-                        if i + 2 < trees.len() {
-                            if let (TokenTree::Punct(p1), TokenTree::Punct(p2)) =
+                        if i + 2 < trees.len()
+                            && let (TokenTree::Punct(p1), TokenTree::Punct(p2)) =
                                 (&trees[i + 1], &trees[i + 2])
                             {
                                 let op = p1.as_char();
@@ -161,11 +159,10 @@ impl UiMacroTransformer {
                                     let mut right_tokens = Vec::new();
                                     let mut j = i + 3;
                                     while j < trees.len() {
-                                        if let TokenTree::Punct(p) = &trees[j] {
-                                            if p.as_char() == ',' || p.as_char() == ';' {
+                                        if let TokenTree::Punct(p) = &trees[j]
+                                            && (p.as_char() == ',' || p.as_char() == ';') {
                                                 break;
                                             }
-                                        }
                                         right_tokens.push(trees[j].clone());
                                         j += 1;
                                     }
@@ -197,17 +194,15 @@ impl UiMacroTransformer {
                                     continue;
                                 }
                             }
-                        }
 
                         if is_plain_eq {
                             let mut right_tokens = Vec::new();
                             let mut j = i + 2;
                             while j < trees.len() {
-                                if let TokenTree::Punct(p) = &trees[j] {
-                                    if p.as_char() == ',' || p.as_char() == ';' {
+                                if let TokenTree::Punct(p) = &trees[j]
+                                    && (p.as_char() == ',' || p.as_char() == ';') {
                                         break;
                                     }
-                                }
                                 right_tokens.push(trees[j].clone());
                                 j += 1;
                             }
@@ -254,7 +249,6 @@ impl UiMacroTransformer {
                         continue;
                     }
                 }
-            }
             i += 1;
         }
 

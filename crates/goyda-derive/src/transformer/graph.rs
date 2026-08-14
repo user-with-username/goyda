@@ -65,11 +65,10 @@ impl ReactivityGraphTransformer {
         impl<'ast, 'a> Visit<'ast> for EdgeCollector<'a> {
             fn visit_local(&mut self, local: &'ast Local) {
                 let old_target = self.current_local_target.clone();
-                if let Some(pat_ident) = as_mut_pat_ident(&local.pat) {
-                    if self.all_mut_vars.contains(&pat_ident.ident) {
+                if let Some(pat_ident) = as_mut_pat_ident(&local.pat)
+                    && self.all_mut_vars.contains(&pat_ident.ident) {
                         self.current_local_target = Some(pat_ident.ident.clone());
                     }
-                }
                 if let Some(init) = &local.init {
                     syn::visit::visit_expr(self, &init.expr);
                 }
@@ -77,11 +76,10 @@ impl ReactivityGraphTransformer {
             }
 
             fn visit_ident(&mut self, id: &'ast Ident) {
-                if let Some(target) = &self.current_local_target {
-                    if self.all_mut_vars.contains(id) && id != target {
+                if let Some(target) = &self.current_local_target
+                    && self.all_mut_vars.contains(id) && id != target {
                         self.edges.push((id.clone(), target.clone()));
                     }
-                }
             }
         }
 
@@ -110,8 +108,8 @@ impl VisitMut for ReactivityGraphTransformer {
                 _ => None,
             };
 
-            if let Some(pat_ident) = as_mut_pat_ident(&local.pat) {
-                if self.all_mut_vars.contains(&pat_ident.ident) {
+            if let Some(pat_ident) = as_mut_pat_ident(&local.pat)
+                && self.all_mut_vars.contains(&pat_ident.ident) {
                     let ident = pat_ident.ident.clone();
                     let init_expr = match &local.init {
                         Some(local_init) => local_init.expr.clone(),
@@ -183,15 +181,13 @@ impl VisitMut for ReactivityGraphTransformer {
                         }
                         impl VisitMut for MemoReplacer {
                             fn visit_expr_mut(&mut self, expr: &mut Expr) {
-                                if let Expr::Path(ep) = expr {
-                                    if let Some(id) = ep.path.get_ident() {
-                                        if let Some(shadow_id) = self.mappings.get(id) {
+                                if let Expr::Path(ep) = expr
+                                    && let Some(id) = ep.path.get_ident()
+                                        && let Some(shadow_id) = self.mappings.get(id) {
                                             *expr =
                                                 syn::parse2(quote! { #shadow_id.get() }).unwrap();
                                             return;
                                         }
-                                    }
-                                }
                                 syn::visit_mut::visit_expr_mut(self, expr);
                             }
                         }
@@ -222,7 +218,6 @@ impl VisitMut for ReactivityGraphTransformer {
                     }
                     return;
                 }
-            }
         }
         syn::visit_mut::visit_stmt_mut(self, stmt);
     }

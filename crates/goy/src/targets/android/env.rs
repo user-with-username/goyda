@@ -30,7 +30,7 @@ impl BuildEnvironment {
         if !debug_keystore.exists() {
             println!("--- Generating unique local debug.keystore ---");
             run_command(
-                Command::new("keytool").args(&[
+                Command::new("keytool").args([
                     "-genkey",
                     "-v",
                     "-keystore",

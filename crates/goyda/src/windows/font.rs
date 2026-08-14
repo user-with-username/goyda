@@ -73,12 +73,12 @@ pub fn font_from_bytes(bytes: &[u8], size_px: i32) -> Option<HFONT> {
     }
 
     unsafe {
-        let mut installed = 0u32;
+        let installed = 0u32;
         let handle = AddFontMemResourceEx(
             bytes.as_ptr() as *const _,
             bytes.len() as u32,
             std::ptr::null(),
-            &mut installed,
+            &installed,
         );
         if handle.is_null() {
             return None;
@@ -132,7 +132,7 @@ fn parse_family_name(data: &[u8]) -> Option<String> {
         let start = table + string_offset + offset;
         let raw = data.get(start..start + length)?;
         let units: Vec<u16> = raw
-            .chunks_exact(2)
+            .as_chunks::<2>().0.iter()
             .map(|c| u16::from_be_bytes([c[0], c[1]]))
             .collect();
         if let Ok(name) = String::from_utf16(&units) {

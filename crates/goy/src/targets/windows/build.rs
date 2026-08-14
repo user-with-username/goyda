@@ -65,7 +65,7 @@ pub fn build_windows_app(ctx: &BuildContext) -> Result<PathBuf> {
 
 fn ensure_target_installed(triple: &str) -> Result<()> {
     let listed = Command::new("rustup")
-        .args(&["target", "list", "--installed"])
+        .args(["target", "list", "--installed"])
         .output();
 
     let already_installed = matches!(
@@ -78,7 +78,7 @@ fn ensure_target_installed(triple: &str) -> Result<()> {
     }
 
     let mut cmd = Command::new("rustup");
-    cmd.args(&["target", "add", triple]);
+    cmd.args(["target", "add", triple]);
     run_command_quiet(&mut cmd, "Failed to install the windows target via rustup")
 }
 
@@ -265,7 +265,7 @@ fn normalize(path: &Path) -> Result<String> {
 
 /// Builds the synthetic workspace [`write_workspace`] wrote. `package`
 /// selects just one member (`-p`) - used by
-/// [`super::WindowsTarget::quick_reload`] to rebuild *only* `shim` (the
+/// [`WindowsTarget::quick_reload`](crate::targets::PlatformTarget::quick_reload) to rebuild *only* `shim` (the
 /// consumer's code) without touching `host` or recompiling `goyda` at all;
 /// `None` (a plain `cargo build --workspace`) builds both, for a full
 /// [`build_windows_app`]. Either way this is the *only* place `cargo build`
@@ -305,7 +305,7 @@ fn compile_workspace(
 /// Rebuilds just the consumer's code (`shim`, see [`write_consumer_shim`])
 /// within the already-written workspace and returns the freshly built
 /// `cdylib`'s path - the whole body of
-/// [`super::WindowsTarget::quick_reload`]'s rebuild step. `goyda` itself is
+/// [`WindowsTarget::quick_reload`](crate::targets::PlatformTarget::quick_reload)'s rebuild step. `goyda` itself is
 /// untouched by this (unchanged inputs -> cargo reuses its already-compiled,
 /// already-loaded-by-the-running-host `goyda.dll` from cache), so this is
 /// fast and - critically - never produces a `goyda.dll` the running host's
@@ -325,7 +325,7 @@ pub fn build_consumer_dylib(layout: &WindowsAppLayout, ctx: &BuildContext) -> Re
     Ok(built_dll)
 }
 
-/// The next `app_gen{N}.dll` filename [`super::WindowsTarget::quick_reload`]
+/// The next `app_gen{N}.dll` filename [`WindowsTarget::quick_reload`](crate::targets::PlatformTarget::quick_reload)
 /// (or a fresh [`assemble_bin_dir`]) should write to - one past whatever
 /// generation already exists in `bin/`, so a Windows-locked (currently
 /// loaded) earlier generation's file is never touched, only ever added
@@ -339,11 +339,9 @@ pub fn next_generation_path(layout: &WindowsAppLayout) -> PathBuf {
             if let Some(rest) = name
                 .strip_prefix("app_gen")
                 .and_then(|r| r.strip_suffix(".dll"))
-            {
-                if let Ok(n) = rest.parse::<u32>() {
+                && let Ok(n) = rest.parse::<u32>() {
                     max_seen = Some(max_seen.map_or(n, |m| m.max(n)));
                 }
-            }
         }
     }
     let next = max_seen.map_or(0, |m| m + 1);
@@ -358,7 +356,7 @@ pub fn next_generation_path(layout: &WindowsAppLayout) -> PathBuf {
 /// regenerated on every reload.
 fn find_std_dylib(target_triple: &str) -> Result<Option<PathBuf>> {
     let output = Command::new("rustc")
-        .args(&["--print", "target-libdir", "--target", target_triple])
+        .args(["--print", "target-libdir", "--target", target_triple])
         .output()
         .context("Failed to run `rustc --print target-libdir`")?;
     if !output.status.success() {
@@ -382,7 +380,7 @@ fn find_std_dylib(target_triple: &str) -> Result<Option<PathBuf>> {
 /// Copies everything the running app actually needs at runtime into
 /// `bin/`: the host exe, `goyda.dll`, the dynamic `std` runtime, and (only
 /// when `include_generation_zero`, i.e. a full [`build_windows_app`], not a
-/// [`super::WindowsTarget::quick_reload`] which writes its own generation
+/// [`WindowsTarget::quick_reload`](crate::targets::PlatformTarget::quick_reload) which writes its own generation
 /// directly into `bin/` - see [`next_generation_path`]) the consumer's
 /// first-generation dylib.
 fn assemble_bin_dir(

@@ -5,6 +5,9 @@ edition = "2024"
 description = "#[page]/#[component] proc macros for goyda - internal, not meant to be used directly"
 license = "MIT"
 
+[lints]
+workspace = true
+
 [lib]
 proc-macro = true
 

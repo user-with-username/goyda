@@ -1,0 +1,33 @@
+name: clippy
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: clippy-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  clippy:
+    # windows-latest for the same reason as test.yml - the windows-feature
+    # backend is the only one this repo can actually build/lint on CI.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Clippy goyda-utils
+        run: cargo clippy -p goyda-utils --all-targets
+
+      - name: Clippy goyda (windows backend)
+        run: cargo clippy -p goyda --features windows --all-targets
+
+      - name: Clippy goy
+        run: cargo clippy -p goy --all-targets

@@ -1,3 +1,10 @@
+// These `pub fn`s take an `HWND` (a raw handle, not a real pointer to
+// validate) and only ever dereference it inside a Win32 call after
+// confirming state is registered for it - `HWND` validity is the same
+// implicit contract every Win32 wrapper in this module already relies on,
+// not something an `unsafe fn` signature here would meaningfully improve.
+#![allow(clippy::not_unsafe_ptr_arg_deref)]
+
 pub mod backend;
 mod font;
 mod image;
@@ -193,8 +200,8 @@ fn wide(s: &str) -> Vec<u16> {
 }
 
 thread_local! {
-    static ROOT: RefCell<Option<(HINSTANCE, HWND)>> = RefCell::new(None);
-    static MOUNTED: RefCell<Option<Component>> = RefCell::new(None);
+    static ROOT: RefCell<Option<(HINSTANCE, HWND)>> = const { RefCell::new(None) };
+    static MOUNTED: RefCell<Option<Component>> = const { RefCell::new(None) };
     static CURRENT_PATH: RefCell<String> = RefCell::new(String::from("/"));
 }
 

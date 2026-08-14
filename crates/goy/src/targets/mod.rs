@@ -86,8 +86,8 @@ pub trait PlatformTarget {
     /// to the ordinary path instead - the correct answer whenever there's no
     /// already-running instance to patch yet (the very first `r` right
     /// after startup) or the platform has no such mechanism at all. Only
-    /// [`windows::WindowsTarget`](crate::targets::windows::WindowsTarget)
-    /// implements this for now - see its own doc comment for how.
+    /// [`windows::WindowsTarget`] implements this for now - see its own
+    /// doc comment for how.
     fn quick_reload(&self, _ctx: &BuildContext) -> Result<bool> {
         Ok(false)
     }

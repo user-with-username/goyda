@@ -304,11 +304,10 @@ impl WindowsBackend {
                             crate::windows::backspace_text_buffer(hwnd);
                         } else if multiline && (wparam == 0x0D || wparam == 0x0A) {
                             crate::windows::append_text_buffer(hwnd, '\n');
-                        } else if let Some(ch) = char::from_u32(wparam as u32) {
-                            if !ch.is_control() {
+                        } else if let Some(ch) = char::from_u32(wparam as u32)
+                            && !ch.is_control() {
                                 crate::windows::append_text_buffer(hwnd, ch);
                             }
-                        }
                     }
                     _ => {}
                 }
@@ -758,11 +757,10 @@ impl Backend for WindowsBackend {
                         .ok()
                         .and_then(|p| p.parent().map(|p| p.join("assets").join(asset.path())))
                         .unwrap_or_default(),
-                ) {
-                    if let Some(f) = font::font_from_bytes(&bytes, size) {
+                )
+                    && let Some(f) = font::font_from_bytes(&bytes, size) {
                         s.font = Some(f);
                     }
-                }
             }
             (Axis::Padding(edge), v) => {
                 if let Some(len) = goyda_utils::style::resolve_length(v) {

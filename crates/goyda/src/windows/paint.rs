@@ -65,7 +65,7 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
         if let Some(bg) = state.background_color {
             let brush = CreateSolidBrush(bg);
             if state.border_radius > 0 {
-                let pen = CreatePen(PS_NULL as i32, 0, 0);
+                let pen = CreatePen(PS_NULL, 0, 0);
                 let old_pen = SelectObject(hdc, pen);
                 let old_brush = SelectObject(hdc, brush);
                 RoundRect(
@@ -86,9 +86,9 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
             DeleteObject(brush);
         }
 
-        if state.border_width > 0 {
-            if let Some(border) = state.border_color {
-                let pen = CreatePen(PS_SOLID as i32, state.border_width, border);
+        if state.border_width > 0
+            && let Some(border) = state.border_color {
+                let pen = CreatePen(PS_SOLID, state.border_width, border);
                 let old_pen = SelectObject(hdc, pen);
                 let old_brush = SelectObject(hdc, GetStockObject(NULL_BRUSH));
                 if state.border_radius > 0 {
@@ -108,7 +108,6 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                 SelectObject(hdc, old_brush);
                 DeleteObject(pen);
             }
-        }
 
         let content_rect = RECT {
             left: rect.left + state.padding.left,
@@ -220,7 +219,7 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                     bottom: box_top + box_size,
                 };
 
-                let border_pen = CreatePen(PS_SOLID as i32, 1, 0x0090_9090);
+                let border_pen = CreatePen(PS_SOLID, 1, 0x0090_9090);
                 let old_pen = SelectObject(hdc, border_pen);
                 let fill_brush = CreateSolidBrush(if state.checked {
                     0x00D0_7800
@@ -241,7 +240,7 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                 DeleteObject(fill_brush);
 
                 if state.checked {
-                    let check_pen = CreatePen(PS_SOLID as i32, 2, 0x00FF_FFFF);
+                    let check_pen = CreatePen(PS_SOLID, 2, 0x00FF_FFFF);
                     let old = SelectObject(hdc, check_pen);
                     MoveToEx(
                         hdc,
@@ -287,7 +286,7 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                     bottom: box_top + box_size,
                 };
 
-                let border_pen = CreatePen(PS_SOLID as i32, 1, 0x0090_9090);
+                let border_pen = CreatePen(PS_SOLID, 1, 0x0090_9090);
                 let old_pen = SelectObject(hdc, border_pen);
                 let fill_brush = CreateSolidBrush(0x00FF_FFFF);
                 let old_brush = SelectObject(hdc, fill_brush);
@@ -306,7 +305,7 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                 if state.checked {
                     let inset = 4;
                     let dot_brush = CreateSolidBrush(0x00D0_7800);
-                    let pen = CreatePen(PS_NULL as i32, 0, 0);
+                    let pen = CreatePen(PS_NULL, 0, 0);
                     let old_pen = SelectObject(hdc, pen);
                     let old_brush = SelectObject(hdc, dot_brush);
                     Ellipse(
@@ -360,7 +359,7 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                     0x00C8_C8C8
                 });
                 let old_brush = SelectObject(hdc, track_brush);
-                let pen = CreatePen(PS_NULL as i32, 0, 0);
+                let pen = CreatePen(PS_NULL, 0, 0);
                 let old_pen = SelectObject(hdc, pen);
                 RoundRect(
                     hdc,
@@ -405,7 +404,7 @@ pub fn paint_control(hwnd: HWND, hdc: HDC) {
                         bottom: rect.bottom,
                     };
                     let brush = CreateSolidBrush(0x00D0_7800);
-                    let pen = CreatePen(PS_NULL as i32, 0, 0);
+                    let pen = CreatePen(PS_NULL, 0, 0);
                     let old_pen = SelectObject(hdc, pen);
                     let old_brush = SelectObject(hdc, brush);
                     let radius = state.border_radius * 2;
