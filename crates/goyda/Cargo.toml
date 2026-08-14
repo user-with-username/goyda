@@ -1,6 +1,6 @@
 [package]
 name = "goyda"
-version = "0.1.0"
+version = "0.1.1"
 edition = "2024"
 description = "A Rust UI toolkit that compiles the same app to Windows, Android, and web, with hot reload"
 license = "MIT"
@@ -10,12 +10,12 @@ crate-type = ["rlib", "dylib"]
 
 [dependencies]
 jni = { version = "0.21.1", features = ["invocation"], optional = true }
-goyda-macros = { path = "../goyda-macros", version = "0.1.0" }
-goyda-utils = { path = "../goyda-utils", version = "0.1.0" }
+goyda-macros = { path = "../goyda-macros", version = "0.1.1" }
+goyda-utils = { path = "../goyda-utils", version = "0.1.1" }
 once_cell = "1.21.4"
 inventory = "0.3.15"
 paste = "1.0"
-goyda-derive = { path = "../goyda-derive", version = "0.1.0" }
+goyda-derive = { path = "../goyda-derive", version = "0.1.1" }
 wasm-bindgen = { version = "0.2.100", optional = true }
 js-sys = { version = "0.3.77", optional = true }
 console_error_panic_hook = { version = "0.1", optional = true }
