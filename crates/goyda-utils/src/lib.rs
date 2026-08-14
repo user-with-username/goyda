@@ -7,4 +7,4 @@ pub mod style;
 
 pub use asset::Asset;
 pub use color::Color;
-pub use style::{Align, Axis, Edge, StyleProperty, StyleValue, SPACING};
+pub use style::{Align, Axis, Edge, SPACING, StyleProperty, StyleValue};

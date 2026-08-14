@@ -1,31 +1,49 @@
-use jni::{
-    objects::{JObject, JValue, GlobalRef},
-    JNIEnv, JavaVM
+use crate::components::{
+    Align, Asset, Axis, Color, Edge, LayoutDirection, StyleProperty, StyleValue,
 };
-use goyda_macros::{jcall, jnew, new_widget, set_layout_params, sig};
-use crate::core::{Backend, BackendUpdater};
-use crate::components::{Align, Asset, LayoutDirection, StyleProperty, Color, Axis, Edge, StyleValue};
 use crate::core::events::{Event, Update};
+use crate::core::{Backend, BackendUpdater};
+use goyda_macros::{jcall, jnew, new_widget, set_layout_params, sig};
+use jni::{
+    JNIEnv, JavaVM,
+    objects::{GlobalRef, JObject, JValue},
+};
+use once_cell::sync::{Lazy, OnceCell};
 use std::collections::HashMap;
 use std::rc::Rc;
 use std::sync::{Arc, Mutex};
-use once_cell::sync::{Lazy, OnceCell};
 
 /// The Android app's Java VM handle, set once at startup.
 pub static JVM: OnceCell<JavaVM> = OnceCell::new();
 
-static RADIO_GROUPS: Lazy<Mutex<HashMap<String, Vec<Arc<GlobalRef>>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
+static RADIO_GROUPS: Lazy<Mutex<HashMap<String, Vec<Arc<GlobalRef>>>>> =
+    Lazy::new(|| Mutex::new(HashMap::new()));
 
 fn register_radio(group: &str, view: &AndroidView) {
-    RADIO_GROUPS.lock().unwrap().entry(group.to_string()).or_default().push(view.global_ref.clone());
+    RADIO_GROUPS
+        .lock()
+        .unwrap()
+        .entry(group.to_string())
+        .or_default()
+        .push(view.global_ref.clone());
 }
 
 fn select_radio(env: &mut JNIEnv, group: &str, selected: &AndroidView) {
-    let members = RADIO_GROUPS.lock().unwrap().get(group).cloned().unwrap_or_default();
+    let members = RADIO_GROUPS
+        .lock()
+        .unwrap()
+        .get(group)
+        .cloned()
+        .unwrap_or_default();
     for member in &members {
         let is_selected = Arc::ptr_eq(member, &selected.global_ref);
         let local = env.new_local_ref(member.as_obj()).unwrap();
-        let _ = env.call_method(&local, "setChecked", sig!((boolean) -> void), &[JValue::Bool(is_selected as u8)]);
+        let _ = env.call_method(
+            &local,
+            "setChecked",
+            sig!((boolean) -> void),
+            &[JValue::Bool(is_selected as u8)],
+        );
     }
 }
 
@@ -61,40 +79,83 @@ fn resolve_font_size(value: &StyleValue) -> Option<f32> {
 }
 
 fn get_padding(env: &mut JNIEnv, view: &JObject) -> (i32, i32, i32, i32) {
-    let l = env.call_method(view, "getPaddingLeft", sig!(() -> int), &[]).unwrap().i().unwrap();
-    let t = env.call_method(view, "getPaddingTop", sig!(() -> int), &[]).unwrap().i().unwrap();
-    let r = env.call_method(view, "getPaddingRight", sig!(() -> int), &[]).unwrap().i().unwrap();
-    let b = env.call_method(view, "getPaddingBottom", sig!(() -> int), &[]).unwrap().i().unwrap();
+    let l = env
+        .call_method(view, "getPaddingLeft", sig!(() -> int), &[])
+        .unwrap()
+        .i()
+        .unwrap();
+    let t = env
+        .call_method(view, "getPaddingTop", sig!(() -> int), &[])
+        .unwrap()
+        .i()
+        .unwrap();
+    let r = env
+        .call_method(view, "getPaddingRight", sig!(() -> int), &[])
+        .unwrap()
+        .i()
+        .unwrap();
+    let b = env
+        .call_method(view, "getPaddingBottom", sig!(() -> int), &[])
+        .unwrap()
+        .i()
+        .unwrap();
     (l, t, r, b)
 }
 
 fn set_padding(env: &mut JNIEnv, view: &JObject, l: i32, t: i32, r: i32, b: i32) {
     env.call_method(
-        view, "setPadding", sig!((int, int, int, int) -> void),
-        &[JValue::Int(l), JValue::Int(t), JValue::Int(r), JValue::Int(b)],
-    ).unwrap();
+        view,
+        "setPadding",
+        sig!((int, int, int, int) -> void),
+        &[
+            JValue::Int(l),
+            JValue::Int(t),
+            JValue::Int(r),
+            JValue::Int(b),
+        ],
+    )
+    .unwrap();
 }
 
 fn apply_text_color(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(c) = resolve_color(value) else { return; };
-    env.call_method(view, "setTextColor", sig!((int) -> void), &[JValue::Int(c)]).unwrap();
+    let Some(c) = resolve_color(value) else {
+        return;
+    };
+    env.call_method(view, "setTextColor", sig!((int) -> void), &[JValue::Int(c)])
+        .unwrap();
 }
 
 const DEFAULT_TEXT_COLOR: i32 = 0xFF00_0000u32 as i32;
 
 fn set_default_text_color(env: &mut JNIEnv, view: &JObject) {
-    env.call_method(view, "setTextColor", sig!((int) -> void), &[JValue::Int(DEFAULT_TEXT_COLOR)]).unwrap();
+    env.call_method(
+        view,
+        "setTextColor",
+        sig!((int) -> void),
+        &[JValue::Int(DEFAULT_TEXT_COLOR)],
+    )
+    .unwrap();
 }
 
 fn get_or_create_gradient_drawable<'a>(env: &mut JNIEnv<'a>, view: &JObject) -> JObject<'a> {
     let existing = env
-        .call_method(view, "getBackground", sig!(() -> "android/graphics/drawable/Drawable"), &[])
+        .call_method(
+            view,
+            "getBackground",
+            sig!(() -> "android/graphics/drawable/Drawable"),
+            &[],
+        )
         .ok()
         .and_then(|r| r.l().ok());
 
     let is_gradient = existing
         .as_ref()
-        .map(|d| !d.is_null() && env.is_instance_of(d, "android/graphics/drawable/GradientDrawable").unwrap_or(false))
+        .map(|d| {
+            !d.is_null()
+                && env
+                    .is_instance_of(d, "android/graphics/drawable/GradientDrawable")
+                    .unwrap_or(false)
+        })
         .unwrap_or(false);
 
     if is_gradient {
@@ -102,13 +163,26 @@ fn get_or_create_gradient_drawable<'a>(env: &mut JNIEnv<'a>, view: &JObject) -> 
     } else {
         let (l, t, r, b) = get_padding(env, view);
 
-        let drawable = env.new_object("android/graphics/drawable/GradientDrawable", sig!(() -> void), &[]).unwrap();
+        let drawable = env
+            .new_object(
+                "android/graphics/drawable/GradientDrawable",
+                sig!(() -> void),
+                &[],
+            )
+            .unwrap();
         env.call_method(
-            view, "setBackground", sig!(("android/graphics/drawable/Drawable") -> void),
+            view,
+            "setBackground",
+            sig!(("android/graphics/drawable/Drawable") -> void),
             &[JValue::Object(&drawable)],
-        ).unwrap();
+        )
+        .unwrap();
 
-        let is_clickable = env.call_method(view, "isClickable", sig!(() -> boolean), &[]).unwrap().z().unwrap();
+        let is_clickable = env
+            .call_method(view, "isClickable", sig!(() -> boolean), &[])
+            .unwrap()
+            .z()
+            .unwrap();
         if is_clickable && l == 0 && t == 0 {
             set_padding(env, view, 48, 32, 48, 32);
         } else {
@@ -121,32 +195,65 @@ fn get_or_create_gradient_drawable<'a>(env: &mut JNIEnv<'a>, view: &JObject) -> 
 
 fn get_or_create_foreground_drawable<'a>(env: &mut JNIEnv<'a>, view: &JObject) -> JObject<'a> {
     let existing = env
-        .call_method(view, "getForeground", sig!(() -> "android/graphics/drawable/Drawable"), &[])
+        .call_method(
+            view,
+            "getForeground",
+            sig!(() -> "android/graphics/drawable/Drawable"),
+            &[],
+        )
         .ok()
         .and_then(|r| r.l().ok());
 
     let is_gradient = existing
         .as_ref()
-        .map(|d| !d.is_null() && env.is_instance_of(d, "android/graphics/drawable/GradientDrawable").unwrap_or(false))
+        .map(|d| {
+            !d.is_null()
+                && env
+                    .is_instance_of(d, "android/graphics/drawable/GradientDrawable")
+                    .unwrap_or(false)
+        })
         .unwrap_or(false);
 
     if is_gradient {
         existing.unwrap()
     } else {
-        let drawable = env.new_object("android/graphics/drawable/GradientDrawable", sig!(() -> void), &[]).unwrap();
-        env.call_method(&drawable, "setColor", sig!((int) -> void), &[JValue::Int(0x00000000u32 as i32)]).unwrap();
+        let drawable = env
+            .new_object(
+                "android/graphics/drawable/GradientDrawable",
+                sig!(() -> void),
+                &[],
+            )
+            .unwrap();
         env.call_method(
-            view, "setForeground", sig!(("android/graphics/drawable/Drawable") -> void),
+            &drawable,
+            "setColor",
+            sig!((int) -> void),
+            &[JValue::Int(0x00000000u32 as i32)],
+        )
+        .unwrap();
+        env.call_method(
+            view,
+            "setForeground",
+            sig!(("android/graphics/drawable/Drawable") -> void),
             &[JValue::Object(&drawable)],
-        ).unwrap();
+        )
+        .unwrap();
         drawable
     }
 }
 
 fn apply_border_radius(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
     let drawable = get_or_create_gradient_drawable(env, view);
-    env.call_method(&drawable, "setCornerRadius", sig!((float) -> void), &[JValue::Float(v as f32)]).unwrap();
+    env.call_method(
+        &drawable,
+        "setCornerRadius",
+        sig!((float) -> void),
+        &[JValue::Float(v as f32)],
+    )
+    .unwrap();
 }
 
 const DEFAULT_BORDER_COLOR: i32 = 0xFF000000u32 as i32;
@@ -175,62 +282,115 @@ fn get_stroke_state(env: &mut JNIEnv, view: &JObject) -> (i32, i32) {
 fn set_stroke_state(env: &mut JNIEnv, view: &JObject, width: i32, color: i32) {
     let arr = env.new_int_array(2).unwrap();
     env.set_int_array_region(&arr, 0, &[width, color]).unwrap();
-    env.call_method(view, "setTag", sig!(("java/lang/Object") -> void), &[JValue::Object(&arr)]).unwrap();
+    env.call_method(
+        view,
+        "setTag",
+        sig!(("java/lang/Object") -> void),
+        &[JValue::Object(&arr)],
+    )
+    .unwrap();
 
     let drawable = get_or_create_foreground_drawable(env, view);
-    env.call_method(&drawable, "setStroke", sig!((int, int) -> void), &[JValue::Int(width), JValue::Int(color)]).unwrap();
+    env.call_method(
+        &drawable,
+        "setStroke",
+        sig!((int, int) -> void),
+        &[JValue::Int(width), JValue::Int(color)],
+    )
+    .unwrap();
 }
 
 fn apply_border_width(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(w) = resolve_length(value) else { return; };
+    let Some(w) = resolve_length(value) else {
+        return;
+    };
     let (_, color) = get_stroke_state(env, view);
     set_stroke_state(env, view, w, color);
 }
 
 fn apply_border_color(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(c) = resolve_color(value) else { return; };
+    let Some(c) = resolve_color(value) else {
+        return;
+    };
     let (width, _) = get_stroke_state(env, view);
     set_stroke_state(env, view, width, c);
 }
 
 fn apply_opacity(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let StyleValue::Number(alpha) = value else { return; };
-    env.call_method(view, "setAlpha", sig!((float) -> void), &[JValue::Float(*alpha)]).unwrap();
+    let StyleValue::Number(alpha) = value else {
+        return;
+    };
+    env.call_method(
+        view,
+        "setAlpha",
+        sig!((float) -> void),
+        &[JValue::Float(*alpha)],
+    )
+    .unwrap();
 }
 
 fn apply_background_color(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(c) = resolve_color(value) else { return; };
+    let Some(c) = resolve_color(value) else {
+        return;
+    };
     let drawable = get_or_create_gradient_drawable(env, view);
-    env.call_method(&drawable, "setColor", sig!((int) -> void), &[JValue::Int(c)]).unwrap();
+    env.call_method(
+        &drawable,
+        "setColor",
+        sig!((int) -> void),
+        &[JValue::Int(c)],
+    )
+    .unwrap();
 }
 
 fn apply_font_size(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(size) = resolve_font_size(value) else { return; };
-    env.call_method(view, "setTextSize", sig!((float) -> void), &[JValue::Float(size)]).unwrap();
+    let Some(size) = resolve_font_size(value) else {
+        return;
+    };
+    env.call_method(
+        view,
+        "setTextSize",
+        sig!((float) -> void),
+        &[JValue::Float(size)],
+    )
+    .unwrap();
 }
 
 fn apply_padding_all(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
     set_padding(env, view, v, v, v, v);
 }
 
 fn apply_padding_horizontal(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
     let (_, t, _, b) = get_padding(env, view);
     set_padding(env, view, v, t, v, b);
 }
 
 fn apply_padding_vertical(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
     let (l, _, r, _) = get_padding(env, view);
     set_padding(env, view, l, v, r, v);
 }
 
 fn apply_margin_all(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
 
     let Ok(params) = env
-        .call_method(view, "getLayoutParams", sig!(() -> "android/view/ViewGroup$LayoutParams"), &[])
+        .call_method(
+            view,
+            "getLayoutParams",
+            sig!(() -> "android/view/ViewGroup$LayoutParams"),
+            &[],
+        )
         .and_then(|r| r.l())
     else {
         return;
@@ -245,65 +405,112 @@ fn apply_margin_all(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
     }
 
     env.call_method(
-        &params, "setMargins", sig!((int, int, int, int) -> void),
-        &[JValue::Int(v), JValue::Int(v), JValue::Int(v), JValue::Int(v)],
-    ).unwrap();
+        &params,
+        "setMargins",
+        sig!((int, int, int, int) -> void),
+        &[
+            JValue::Int(v),
+            JValue::Int(v),
+            JValue::Int(v),
+            JValue::Int(v),
+        ],
+    )
+    .unwrap();
 
     env.call_method(
-        view, "setLayoutParams", sig!(("android/view/ViewGroup$LayoutParams") -> void),
+        view,
+        "setLayoutParams",
+        sig!(("android/view/ViewGroup$LayoutParams") -> void),
         &[JValue::Object(&params)],
-    ).unwrap();
+    )
+    .unwrap();
 }
 
 fn set_layout_dimension(env: &mut JNIEnv, view: &JObject, field: &str, v: i32) {
     let Ok(params) = env
-        .call_method(view, "getLayoutParams", sig!(() -> "android/view/ViewGroup$LayoutParams"), &[])
+        .call_method(
+            view,
+            "getLayoutParams",
+            sig!(() -> "android/view/ViewGroup$LayoutParams"),
+            &[],
+        )
         .and_then(|r| r.l())
     else {
         return;
     };
     let _ = env.set_field(&params, field, "I", JValue::Int(v));
-    let _ = env.call_method(view, "setLayoutParams", sig!(("android/view/ViewGroup$LayoutParams") -> void), &[JValue::Object(&params)]);
+    let _ = env.call_method(
+        view,
+        "setLayoutParams",
+        sig!(("android/view/ViewGroup$LayoutParams") -> void),
+        &[JValue::Object(&params)],
+    );
 }
 
 fn apply_width(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
     set_layout_dimension(env, view, "width", v);
 }
 
 fn apply_height(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
     set_layout_dimension(env, view, "height", v);
 }
 
 fn current_typeface_style(env: &mut JNIEnv, view: &JObject) -> i32 {
-    env.call_method(view, "getTypeface", sig!(() -> "android/graphics/Typeface"), &[])
-        .ok()
-        .and_then(|r| r.l().ok())
-        .filter(|t| !t.is_null())
-        .and_then(|t| env.call_method(&t, "getStyle", sig!(() -> int), &[]).ok())
-        .and_then(|r| r.i().ok())
-        .unwrap_or(0)
+    env.call_method(
+        view,
+        "getTypeface",
+        sig!(() -> "android/graphics/Typeface"),
+        &[],
+    )
+    .ok()
+    .and_then(|r| r.l().ok())
+    .filter(|t| !t.is_null())
+    .and_then(|t| env.call_method(&t, "getStyle", sig!(() -> int), &[]).ok())
+    .and_then(|r| r.i().ok())
+    .unwrap_or(0)
 }
 
 fn set_typeface_style(env: &mut JNIEnv, view: &JObject, style: i32) {
-    let _ = env.call_method(view, "setTypeface", sig!(("android/graphics/Typeface", int) -> void), &[JValue::Object(&JObject::null()), JValue::Int(style)]);
+    let _ = env.call_method(
+        view,
+        "setTypeface",
+        sig!(("android/graphics/Typeface", int) -> void),
+        &[JValue::Object(&JObject::null()), JValue::Int(style)],
+    );
 }
 
 const TYPEFACE_BOLD: i32 = 1;
 const TYPEFACE_ITALIC: i32 = 2;
 
 fn apply_font_weight(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let StyleValue::Bool(bold) = value else { return; };
+    let StyleValue::Bool(bold) = value else {
+        return;
+    };
     let current = current_typeface_style(env, view);
-    let updated = if *bold { current | TYPEFACE_BOLD } else { current & !TYPEFACE_BOLD };
+    let updated = if *bold {
+        current | TYPEFACE_BOLD
+    } else {
+        current & !TYPEFACE_BOLD
+    };
     set_typeface_style(env, view, updated);
 }
 
 fn apply_font_style(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let StyleValue::Bool(italic) = value else { return; };
+    let StyleValue::Bool(italic) = value else {
+        return;
+    };
     let current = current_typeface_style(env, view);
-    let updated = if *italic { current | TYPEFACE_ITALIC } else { current & !TYPEFACE_ITALIC };
+    let updated = if *italic {
+        current | TYPEFACE_ITALIC
+    } else {
+        current & !TYPEFACE_ITALIC
+    };
     set_typeface_style(env, view, updated);
 }
 
@@ -319,14 +526,21 @@ const GRAVITY_HORIZONTAL_MASK: i32 = 7;
 const GRAVITY_VERTICAL_MASK: i32 = 112;
 
 fn apply_text_align(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let StyleValue::Align(align) = value else { return; };
+    let StyleValue::Align(align) = value else {
+        return;
+    };
     let gravity = match align {
         Align::Start => GRAVITY_LEFT,
         Align::Center => GRAVITY_CENTER_HORIZONTAL,
         Align::End => GRAVITY_RIGHT,
         Align::Stretch | Align::SpaceBetween => GRAVITY_LEFT,
     };
-    let _ = env.call_method(view, "setGravity", sig!((int) -> void), &[JValue::Int(gravity)]);
+    let _ = env.call_method(
+        view,
+        "setGravity",
+        sig!((int) -> void),
+        &[JValue::Int(gravity)],
+    );
 }
 
 fn horizontal_gravity(align: Align) -> i32 {
@@ -352,40 +566,69 @@ fn vertical_gravity(align: Align) -> i32 {
 }
 
 fn stack_orientation(env: &mut JNIEnv, view: &JObject) -> Option<i32> {
-    env.call_method(view, "getOrientation", sig!(() -> int), &[]).ok()?.i().ok()
+    env.call_method(view, "getOrientation", sig!(() -> int), &[])
+        .ok()?
+        .i()
+        .ok()
 }
 
 fn current_gravity(env: &mut JNIEnv, view: &JObject) -> i32 {
-    env.call_method(view, "getGravity", sig!(() -> int), &[]).ok().and_then(|r| r.i().ok()).unwrap_or(0)
+    env.call_method(view, "getGravity", sig!(() -> int), &[])
+        .ok()
+        .and_then(|r| r.i().ok())
+        .unwrap_or(0)
 }
 
 fn apply_align_items(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let StyleValue::Align(align) = value else { return; };
-    let Some(orientation) = stack_orientation(env, view) else { return; };
+    let StyleValue::Align(align) = value else {
+        return;
+    };
+    let Some(orientation) = stack_orientation(env, view) else {
+        return;
+    };
     let current = current_gravity(env, view);
     let updated = if orientation == 1 {
         (current & !GRAVITY_HORIZONTAL_MASK) | horizontal_gravity(*align)
     } else {
         (current & !GRAVITY_VERTICAL_MASK) | vertical_gravity(*align)
     };
-    let _ = env.call_method(view, "setGravity", sig!((int) -> void), &[JValue::Int(updated)]);
+    let _ = env.call_method(
+        view,
+        "setGravity",
+        sig!((int) -> void),
+        &[JValue::Int(updated)],
+    );
 }
 
 fn apply_justify_content(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let StyleValue::Align(align) = value else { return; };
-    let Some(orientation) = stack_orientation(env, view) else { return; };
+    let StyleValue::Align(align) = value else {
+        return;
+    };
+    let Some(orientation) = stack_orientation(env, view) else {
+        return;
+    };
     let current = current_gravity(env, view);
     let updated = if orientation == 1 {
         (current & !GRAVITY_VERTICAL_MASK) | vertical_gravity(*align)
     } else {
         (current & !GRAVITY_HORIZONTAL_MASK) | horizontal_gravity(*align)
     };
-    let _ = env.call_method(view, "setGravity", sig!((int) -> void), &[JValue::Int(updated)]);
+    let _ = env.call_method(
+        view,
+        "setGravity",
+        sig!((int) -> void),
+        &[JValue::Int(updated)],
+    );
 }
 
 fn read_asset_bytes(env: &mut JNIEnv, context: &JObject, path: &str) -> Option<Vec<u8>> {
     let asset_manager = env
-        .call_method(context, "getAssets", sig!(() -> "android/content/res/AssetManager"), &[])
+        .call_method(
+            context,
+            "getAssets",
+            sig!(() -> "android/content/res/AssetManager"),
+            &[],
+        )
         .ok()?
         .l()
         .ok()?;
@@ -406,14 +649,23 @@ fn read_asset_bytes(env: &mut JNIEnv, context: &JObject, path: &str) -> Option<V
         }
     };
 
-    let available = env.call_method(&input_stream, "available", sig!(() -> int), &[]).ok()?.i().ok()?;
+    let available = env
+        .call_method(&input_stream, "available", sig!(() -> int), &[])
+        .ok()?
+        .i()
+        .ok()?;
     if available <= 0 {
         return None;
     }
 
     let byte_array = env.new_byte_array(available).ok()?;
     let read = env
-        .call_method(&input_stream, "read", sig!(([byte]) -> int), &[JValue::Object(&byte_array)])
+        .call_method(
+            &input_stream,
+            "read",
+            sig!(([byte]) -> int),
+            &[JValue::Object(&byte_array)],
+        )
         .ok()?
         .i()
         .ok()?;
@@ -437,14 +689,27 @@ fn rasterize_svg(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     }
 
     let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)?;
-    resvg::render(&tree, resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::default(),
+        &mut pixmap.as_mut(),
+    );
     Some((width, height, pixmap.data().to_vec()))
 }
 
-fn create_bitmap_from_rgba<'a>(env: &mut JNIEnv<'a>, width: u32, height: u32, rgba: &[u8]) -> Option<JObject<'a>> {
+fn create_bitmap_from_rgba<'a>(
+    env: &mut JNIEnv<'a>,
+    width: u32,
+    height: u32,
+    rgba: &[u8],
+) -> Option<JObject<'a>> {
     let config_class = env.find_class("android/graphics/Bitmap$Config").ok()?;
     let argb_8888 = env
-        .get_static_field(config_class, "ARGB_8888", "Landroid/graphics/Bitmap$Config;")
+        .get_static_field(
+            config_class,
+            "ARGB_8888",
+            "Landroid/graphics/Bitmap$Config;",
+        )
         .ok()?
         .l()
         .ok()?;
@@ -455,7 +720,11 @@ fn create_bitmap_from_rgba<'a>(env: &mut JNIEnv<'a>, width: u32, height: u32, rg
             bitmap_class,
             "createBitmap",
             sig!((int, int, "android/graphics/Bitmap$Config") -> "android/graphics/Bitmap"),
-            &[JValue::Int(width as i32), JValue::Int(height as i32), JValue::Object(&argb_8888)],
+            &[
+                JValue::Int(width as i32),
+                JValue::Int(height as i32),
+                JValue::Object(&argb_8888),
+            ],
         )
         .ok()?
         .l()
@@ -464,18 +733,32 @@ fn create_bitmap_from_rgba<'a>(env: &mut JNIEnv<'a>, width: u32, height: u32, rg
     let byte_array = env.byte_array_from_slice(rgba).ok()?;
     let buffer_class = env.find_class("java/nio/ByteBuffer").ok()?;
     let buffer = env
-        .call_static_method(buffer_class, "wrap", sig!(([byte]) -> "java/nio/ByteBuffer"), &[JValue::Object(&byte_array)])
+        .call_static_method(
+            buffer_class,
+            "wrap",
+            sig!(([byte]) -> "java/nio/ByteBuffer"),
+            &[JValue::Object(&byte_array)],
+        )
         .ok()?
         .l()
         .ok()?;
 
-    env.call_method(&bitmap, "copyPixelsFromBuffer", sig!(("java/nio/Buffer") -> void), &[JValue::Object(&buffer)])
-        .ok()?;
+    env.call_method(
+        &bitmap,
+        "copyPixelsFromBuffer",
+        sig!(("java/nio/Buffer") -> void),
+        &[JValue::Object(&buffer)],
+    )
+    .ok()?;
 
     Some(bitmap)
 }
 
-fn decode_bitmap_bytes<'a>(env: &mut JNIEnv<'a>, asset: &Asset, bytes: &[u8]) -> Option<JObject<'a>> {
+fn decode_bitmap_bytes<'a>(
+    env: &mut JNIEnv<'a>,
+    asset: &Asset,
+    bytes: &[u8],
+) -> Option<JObject<'a>> {
     if goyda_utils::asset::is_svg(asset) {
         let (width, height, rgba) = rasterize_svg(bytes)?;
         return create_bitmap_from_rgba(env, width, height, &rgba);
@@ -487,14 +770,22 @@ fn decode_bitmap_bytes<'a>(env: &mut JNIEnv<'a>, asset: &Asset, bytes: &[u8]) ->
         bitmap_factory_class,
         "decodeByteArray",
         sig!(([byte], int, int) -> "android/graphics/Bitmap"),
-        &[JValue::Object(&array), JValue::Int(0), JValue::Int(bytes.len() as i32)],
+        &[
+            JValue::Object(&array),
+            JValue::Int(0),
+            JValue::Int(bytes.len() as i32),
+        ],
     )
     .ok()?
     .l()
     .ok()
 }
 
-fn load_asset_bitmap<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, asset: &Asset) -> Option<JObject<'a>> {
+fn load_asset_bitmap<'a>(
+    env: &mut JNIEnv<'a>,
+    context: &JObject<'a>,
+    asset: &Asset,
+) -> Option<JObject<'a>> {
     let bytes = read_asset_bytes(env, context, asset.path())?;
     decode_bitmap_bytes(env, asset, &bytes)
 }
@@ -502,15 +793,29 @@ fn load_asset_bitmap<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, asset: &As
 fn build_typeface_bytes<'a>(env: &mut JNIEnv<'a>, bytes: &[u8]) -> Option<JObject<'a>> {
     let array = env.byte_array_from_slice(bytes).ok()?;
     let builder = env
-        .new_object("android/graphics/Typeface$Builder", sig!(([byte]) -> void), &[JValue::Object(&array)])
+        .new_object(
+            "android/graphics/Typeface$Builder",
+            sig!(([byte]) -> void),
+            &[JValue::Object(&array)],
+        )
         .ok()?;
-    env.call_method(&builder, "build", sig!(() -> "android/graphics/Typeface"), &[])
-        .ok()?
-        .l()
-        .ok()
+    env.call_method(
+        &builder,
+        "build",
+        sig!(() -> "android/graphics/Typeface"),
+        &[],
+    )
+    .ok()?
+    .l()
+    .ok()
 }
 
-fn apply_font_family<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, view: &JObject<'a>, asset: &Asset) {
+fn apply_font_family<'a>(
+    env: &mut JNIEnv<'a>,
+    context: &JObject<'a>,
+    view: &JObject<'a>,
+    asset: &Asset,
+) {
     let typeface = if let Some(bytes) = asset.bytes() {
         build_typeface_bytes(env, bytes)
     } else {
@@ -523,12 +828,26 @@ fn apply_font_family<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, view: &JOb
         return;
     };
 
-    let _ = env.call_method(view, "setTypeface", sig!(("android/graphics/Typeface") -> void), &[JValue::Object(&typeface)]);
+    let _ = env.call_method(
+        view,
+        "setTypeface",
+        sig!(("android/graphics/Typeface") -> void),
+        &[JValue::Object(&typeface)],
+    );
 }
 
-fn load_asset_typeface<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, path: &str) -> Option<JObject<'a>> {
+fn load_asset_typeface<'a>(
+    env: &mut JNIEnv<'a>,
+    context: &JObject<'a>,
+    path: &str,
+) -> Option<JObject<'a>> {
     let asset_manager = env
-        .call_method(context, "getAssets", sig!(() -> "android/content/res/AssetManager"), &[])
+        .call_method(
+            context,
+            "getAssets",
+            sig!(() -> "android/content/res/AssetManager"),
+            &[],
+        )
         .ok()?
         .l()
         .ok()?;
@@ -553,98 +872,210 @@ fn load_asset_typeface<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, path: &s
 }
 
 fn apply_line_height(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
     // `setLineHeight(int)` (an *absolute* px line height) only exists from
     // API 28 - `setLineSpacing(extra, mult)` is the portable fallback,
     // added as extra space per line rather than a true absolute height.
-    let _ = env.call_method(view, "setLineSpacing", sig!((float, float) -> void), &[JValue::Float(v as f32), JValue::Float(1.0)]);
+    let _ = env.call_method(
+        view,
+        "setLineSpacing",
+        sig!((float, float) -> void),
+        &[JValue::Float(v as f32), JValue::Float(1.0)],
+    );
 }
 
 fn apply_letter_spacing(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
     // `setLetterSpacing` takes EM units, not px - convert using the view's
     // own current text size.
-    let text_size = env.call_method(view, "getTextSize", sig!(() -> float), &[]).ok().and_then(|r| r.f().ok()).unwrap_or(1.0).max(1.0);
-    let _ = env.call_method(view, "setLetterSpacing", sig!((float) -> void), &[JValue::Float(v as f32 / text_size)]);
+    let text_size = env
+        .call_method(view, "getTextSize", sig!(() -> float), &[])
+        .ok()
+        .and_then(|r| r.f().ok())
+        .unwrap_or(1.0)
+        .max(1.0);
+    let _ = env.call_method(
+        view,
+        "setLetterSpacing",
+        sig!((float) -> void),
+        &[JValue::Float(v as f32 / text_size)],
+    );
 }
 
 const PAINT_UNDERLINE_FLAG: i32 = 8;
 const PAINT_STRIKETHRU_FLAG: i32 = 16;
 
 fn current_paint_flags(env: &mut JNIEnv, view: &JObject) -> i32 {
-    env.call_method(view, "getPaintFlags", sig!(() -> int), &[]).ok().and_then(|r| r.i().ok()).unwrap_or(0)
+    env.call_method(view, "getPaintFlags", sig!(() -> int), &[])
+        .ok()
+        .and_then(|r| r.i().ok())
+        .unwrap_or(0)
 }
 
 fn apply_underline(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let StyleValue::Bool(on) = value else { return; };
+    let StyleValue::Bool(on) = value else {
+        return;
+    };
     let current = current_paint_flags(env, view);
-    let updated = if *on { current | PAINT_UNDERLINE_FLAG } else { current & !PAINT_UNDERLINE_FLAG };
-    let _ = env.call_method(view, "setPaintFlags", sig!((int) -> void), &[JValue::Int(updated)]);
+    let updated = if *on {
+        current | PAINT_UNDERLINE_FLAG
+    } else {
+        current & !PAINT_UNDERLINE_FLAG
+    };
+    let _ = env.call_method(
+        view,
+        "setPaintFlags",
+        sig!((int) -> void),
+        &[JValue::Int(updated)],
+    );
 }
 
 fn apply_strikethrough(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let StyleValue::Bool(on) = value else { return; };
+    let StyleValue::Bool(on) = value else {
+        return;
+    };
     let current = current_paint_flags(env, view);
-    let updated = if *on { current | PAINT_STRIKETHRU_FLAG } else { current & !PAINT_STRIKETHRU_FLAG };
-    let _ = env.call_method(view, "setPaintFlags", sig!((int) -> void), &[JValue::Int(updated)]);
+    let updated = if *on {
+        current | PAINT_STRIKETHRU_FLAG
+    } else {
+        current & !PAINT_STRIKETHRU_FLAG
+    };
+    let _ = env.call_method(
+        view,
+        "setPaintFlags",
+        sig!((int) -> void),
+        &[JValue::Int(updated)],
+    );
 }
 
 fn apply_ellipsis(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let StyleValue::Bool(true) = value else { return; };
-    let Ok(truncate_class) = env.find_class("android/text/TextUtils$TruncateAt") else { return; };
-    let Ok(end) = env.get_static_field(truncate_class, "END", "Landroid/text/TextUtils$TruncateAt;") else { return; };
-    let Ok(end_obj) = end.l() else { return; };
-    let _ = env.call_method(view, "setSingleLine", sig!((boolean) -> void), &[JValue::Bool(1)]);
-    let _ = env.call_method(view, "setEllipsize", sig!(("android/text/TextUtils$TruncateAt") -> void), &[JValue::Object(&end_obj)]);
+    let StyleValue::Bool(true) = value else {
+        return;
+    };
+    let Ok(truncate_class) = env.find_class("android/text/TextUtils$TruncateAt") else {
+        return;
+    };
+    let Ok(end) =
+        env.get_static_field(truncate_class, "END", "Landroid/text/TextUtils$TruncateAt;")
+    else {
+        return;
+    };
+    let Ok(end_obj) = end.l() else {
+        return;
+    };
+    let _ = env.call_method(
+        view,
+        "setSingleLine",
+        sig!((boolean) -> void),
+        &[JValue::Bool(1)],
+    );
+    let _ = env.call_method(
+        view,
+        "setEllipsize",
+        sig!(("android/text/TextUtils$TruncateAt") -> void),
+        &[JValue::Object(&end_obj)],
+    );
 }
 
 fn apply_clip(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let StyleValue::Bool(clip) = value else { return; };
-    let _ = env.call_method(view, "setClipChildren", sig!((boolean) -> void), &[JValue::Bool(*clip as u8)]);
-    let _ = env.call_method(view, "setClipToPadding", sig!((boolean) -> void), &[JValue::Bool(*clip as u8)]);
+    let StyleValue::Bool(clip) = value else {
+        return;
+    };
+    let _ = env.call_method(
+        view,
+        "setClipChildren",
+        sig!((boolean) -> void),
+        &[JValue::Bool(*clip as u8)],
+    );
+    let _ = env.call_method(
+        view,
+        "setClipToPadding",
+        sig!((boolean) -> void),
+        &[JValue::Bool(*clip as u8)],
+    );
 }
 
 fn apply_shadow(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
     // `elevation` (API 21+) is the only cross-version native shadow a
     // plain `View` has - it's a soft drop shadow shaped by the view's own
     // outline, not a configurable offset/blur/color like the other two
     // backends' hand-painted shadow, so size is the only knob that maps
     // cleanly (see `apply_shadow_color` for the color's own limits).
-    let _ = env.call_method(view, "setElevation", sig!((float) -> void), &[JValue::Float(v as f32)]);
+    let _ = env.call_method(
+        view,
+        "setElevation",
+        sig!((float) -> void),
+        &[JValue::Float(v as f32)],
+    );
 }
 
 fn apply_shadow_color(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(c) = resolve_color(value) else { return; };
+    let Some(c) = resolve_color(value) else {
+        return;
+    };
     // API 28+ only (`setOutlineSpotShadowColor`) - silently a no-op on
     // older devices, same as every other elevation-shadow color knob on
     // Android.
-    let _ = env.call_method(view, "setOutlineSpotShadowColor", sig!((int) -> void), &[JValue::Int(c)]);
-    let _ = env.call_method(view, "setOutlineAmbientShadowColor", sig!((int) -> void), &[JValue::Int(c)]);
+    let _ = env.call_method(
+        view,
+        "setOutlineSpotShadowColor",
+        sig!((int) -> void),
+        &[JValue::Int(c)],
+    );
+    let _ = env.call_method(
+        view,
+        "setOutlineAmbientShadowColor",
+        sig!((int) -> void),
+        &[JValue::Int(c)],
+    );
 }
 
 fn apply_offset_x(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
     set_layout_margin(env, view, "leftMargin", v);
 }
 
 fn apply_offset_y(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
-    let Some(v) = resolve_length(value) else { return; };
+    let Some(v) = resolve_length(value) else {
+        return;
+    };
     set_layout_margin(env, view, "topMargin", v);
 }
 
 fn set_layout_margin(env: &mut JNIEnv, view: &JObject, field: &str, v: i32) {
     let Ok(params) = env
-        .call_method(view, "getLayoutParams", sig!(() -> "android/view/ViewGroup$LayoutParams"), &[])
+        .call_method(
+            view,
+            "getLayoutParams",
+            sig!(() -> "android/view/ViewGroup$LayoutParams"),
+            &[],
+        )
         .and_then(|r| r.l())
     else {
         return;
     };
-    if !env.is_instance_of(&params, "android/view/ViewGroup$MarginLayoutParams").unwrap_or(false) {
+    if !env
+        .is_instance_of(&params, "android/view/ViewGroup$MarginLayoutParams")
+        .unwrap_or(false)
+    {
         return;
     }
     let _ = env.set_field(&params, field, "I", JValue::Int(v));
-    let _ = env.call_method(view, "setLayoutParams", sig!(("android/view/ViewGroup$LayoutParams") -> void), &[JValue::Object(&params)]);
+    let _ = env.call_method(
+        view,
+        "setLayoutParams",
+        sig!(("android/view/ViewGroup$LayoutParams") -> void),
+        &[JValue::Object(&params)],
+    );
 }
 
 fn build_style_registry() -> HashMap<Axis, StyleApplier> {
@@ -754,7 +1185,9 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
 
         set_layout_params!(self.env, &text_view, -1, -2);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(text_view).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(text_view).unwrap()),
+        }
     }
 
     fn create_button(&mut self, text: &str) -> Self::PlatformView {
@@ -765,17 +1198,23 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
         jcall!(self.env, &button_view, "setText", (("java/lang/CharSequence") -> void), [JValue::Object(&java_string)]).unwrap();
         set_default_text_color(self.env, &button_view);
 
-        jcall!(self.env, &button_view, "setClickable", ((boolean) -> void), [JValue::Bool(1)]).unwrap();
-        jcall!(self.env, &button_view, "setFocusable", ((boolean) -> void), [JValue::Bool(1)]).unwrap();
+        jcall!(self.env, &button_view, "setClickable", ((boolean) -> void), [JValue::Bool(1)])
+            .unwrap();
+        jcall!(self.env, &button_view, "setFocusable", ((boolean) -> void), [JValue::Bool(1)])
+            .unwrap();
         jcall!(self.env, &button_view, "setGravity", ((int) -> void), [JValue::Int(17)]).unwrap();
 
         set_padding(self.env, &button_view, 48, 32, 48, 32);
 
         let layout_params = jnew!(self.env, "android/widget/LinearLayout$LayoutParams", ((int, int) -> void), [JValue::Int(-2), JValue::Int(-2)]);
-        self.env.set_field(&layout_params, "gravity", "I", JValue::Int(1)).unwrap();
+        self.env
+            .set_field(&layout_params, "gravity", "I", JValue::Int(1))
+            .unwrap();
         jcall!(self.env, &button_view, "setLayoutParams", (("android/view/ViewGroup$LayoutParams") -> void), [JValue::Object(&layout_params)]).unwrap();
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(button_view).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(button_view).unwrap()),
+        }
     }
 
     fn create_image(&mut self, asset: &Asset) -> Self::PlatformView {
@@ -798,7 +1237,9 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
 
         set_layout_params!(self.env, &image_view, -2, -2);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(image_view).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(image_view).unwrap()),
+        }
     }
 
     fn create_text_input(&mut self, placeholder: &str, initial_text: &str) -> Self::PlatformView {
@@ -817,7 +1258,9 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
 
         set_layout_params!(self.env, &edit_text, -1, -2);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(edit_text).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(edit_text).unwrap()),
+        }
     }
 
     fn create_textarea(&mut self, placeholder: &str, initial_text: &str) -> Self::PlatformView {
@@ -844,7 +1287,9 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
 
         set_layout_params!(self.env, &edit_text, -1, -2);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(edit_text).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(edit_text).unwrap()),
+        }
     }
 
     fn create_checkbox(&mut self, label: &str, checked: bool) -> Self::PlatformView {
@@ -857,20 +1302,30 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
 
         set_layout_params!(self.env, &checkbox, -2, -2);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(checkbox).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(checkbox).unwrap()),
+        }
     }
 
-    fn create_radio_button(&mut self, group: &str, label: &str, selected: bool) -> Self::PlatformView {
+    fn create_radio_button(
+        &mut self,
+        group: &str,
+        label: &str,
+        selected: bool,
+    ) -> Self::PlatformView {
         let radio = new_widget!(self.env, "android/widget/RadioButton", self.context);
 
         let java_label = self.env.new_string(label).unwrap();
         jcall!(self.env, &radio, "setText", (("java/lang/CharSequence") -> void), [JValue::Object(&java_label)]).unwrap();
         set_default_text_color(self.env, &radio);
-        jcall!(self.env, &radio, "setChecked", ((boolean) -> void), [JValue::Bool(selected as u8)]).unwrap();
+        jcall!(self.env, &radio, "setChecked", ((boolean) -> void), [JValue::Bool(selected as u8)])
+            .unwrap();
 
         set_layout_params!(self.env, &radio, -2, -2);
 
-        let view = AndroidView { global_ref: Arc::new(self.env.new_global_ref(radio).unwrap()) };
+        let view = AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(radio).unwrap()),
+        };
         register_radio(group, &view);
         if selected {
             select_radio(self.env, group, &view);
@@ -887,7 +1342,9 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
         let callback: Rc<dyn Fn(Event)> = Rc::new(move |_e| {
             if let Some(jvm) = JVM.get() {
                 if let Ok(mut env) = jvm.attach_current_thread() {
-                    let target_view = AndroidView { global_ref: target.clone() };
+                    let target_view = AndroidView {
+                        global_ref: target.clone(),
+                    };
                     select_radio(&mut env, &group_owned, &target_view);
                 }
             }
@@ -902,11 +1359,14 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
     fn create_switch(&mut self, checked: bool) -> Self::PlatformView {
         let switch = new_widget!(self.env, "android/widget/Switch", self.context);
 
-        jcall!(self.env, &switch, "setChecked", ((boolean) -> void), [JValue::Bool(checked as u8)]).unwrap();
+        jcall!(self.env, &switch, "setChecked", ((boolean) -> void), [JValue::Bool(checked as u8)])
+            .unwrap();
 
         set_layout_params!(self.env, &switch, -2, -2);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(switch).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(switch).unwrap()),
+        }
     }
 
     fn create_progress(&mut self, value: f32) -> Self::PlatformView {
@@ -919,18 +1379,22 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
 
         jcall!(self.env, &seek_bar, "setMax", ((int) -> void), [JValue::Int(100)]).unwrap();
         let percent = (value.clamp(0.0, 1.0) * 100.0) as i32;
-        jcall!(self.env, &seek_bar, "setProgress", ((int) -> void), [JValue::Int(percent)]).unwrap();
+        jcall!(self.env, &seek_bar, "setProgress", ((int) -> void), [JValue::Int(percent)])
+            .unwrap();
 
         // `WRAP_CONTENT` below lets the `SeekBar` shrink to its bare track
         // thickness (a few px) since it has no text to size itself against
         // like every other control here does - an explicit minimum height
         // keeps the track and thumb (and the touch target dragging it)
         // reasonably sized instead of hairline-thin.
-        jcall!(self.env, &seek_bar, "setMinimumHeight", ((int) -> void), [JValue::Int(72)]).unwrap();
+        jcall!(self.env, &seek_bar, "setMinimumHeight", ((int) -> void), [JValue::Int(72)])
+            .unwrap();
 
         set_layout_params!(self.env, &seek_bar, -1, -2);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(seek_bar).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(seek_bar).unwrap()),
+        }
     }
 
     fn create_spacer(&mut self, size: i32) -> Self::PlatformView {
@@ -939,7 +1403,9 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
         let scaled = (size * 3) as i32;
         set_layout_params!(self.env, &view, scaled, scaled);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(view).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(view).unwrap()),
+        }
     }
 
     fn create_divider(&mut self) -> Self::PlatformView {
@@ -949,26 +1415,39 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
 
         set_layout_params!(self.env, &view, -1, 3);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(view).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(view).unwrap()),
+        }
     }
 
-    fn create_stack(&mut self, direction: LayoutDirection, spacing: i32, children: Vec<Self::PlatformView>) -> Self::PlatformView {
+    fn create_stack(
+        &mut self,
+        direction: LayoutDirection,
+        spacing: i32,
+        children: Vec<Self::PlatformView>,
+    ) -> Self::PlatformView {
         let layout = new_widget!(self.env, "android/widget/LinearLayout", self.context);
 
         let orientation = match direction {
             LayoutDirection::Horizontal => 0,
             LayoutDirection::Vertical => 1,
         };
-        jcall!(self.env, &layout, "setOrientation", ((int) -> void), [JValue::Int(orientation)]).unwrap();
+        jcall!(self.env, &layout, "setOrientation", ((int) -> void), [JValue::Int(orientation)])
+            .unwrap();
 
         let real_spacing = (spacing * 3) as i32;
 
         for (idx, child_view) in children.into_iter().enumerate() {
-            let local_child = self.env.new_local_ref(child_view.global_ref.as_obj()).unwrap();
+            let local_child = self
+                .env
+                .new_local_ref(child_view.global_ref.as_obj())
+                .unwrap();
 
             let layout_params = jnew!(self.env, "android/widget/LinearLayout$LayoutParams", ((int, int) -> void), [JValue::Int(-2), JValue::Int(-2)]);
 
-            self.env.set_field(&layout_params, "gravity", "I", JValue::Int(1)).unwrap();
+            self.env
+                .set_field(&layout_params, "gravity", "I", JValue::Int(1))
+                .unwrap();
 
             if spacing > 0 && idx > 0 {
                 let (margin_l, margin_t) = if direction == LayoutDirection::Vertical {
@@ -980,7 +1459,8 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
                 jcall!(
                     self.env, &layout_params, "setMargins", ((int, int, int, int) -> void),
                     [JValue::Int(margin_l), JValue::Int(margin_t), JValue::Int(0), JValue::Int(0)]
-                ).unwrap();
+                )
+                .unwrap();
             }
 
             jcall!(
@@ -993,28 +1473,45 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
 
         set_layout_params!(self.env, &layout, -1, -1);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(layout).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(layout).unwrap()),
+        }
     }
 
-    fn create_scroll_view(&mut self, direction: LayoutDirection, spacing: i32, children: Vec<Self::PlatformView>) -> Self::PlatformView {
+    fn create_scroll_view(
+        &mut self,
+        direction: LayoutDirection,
+        spacing: i32,
+        children: Vec<Self::PlatformView>,
+    ) -> Self::PlatformView {
         let inner = new_widget!(self.env, "android/widget/LinearLayout", self.context);
 
         let orientation = match direction {
             LayoutDirection::Horizontal => 0,
             LayoutDirection::Vertical => 1,
         };
-        jcall!(self.env, &inner, "setOrientation", ((int) -> void), [JValue::Int(orientation)]).unwrap();
+        jcall!(self.env, &inner, "setOrientation", ((int) -> void), [JValue::Int(orientation)])
+            .unwrap();
 
         let real_spacing = spacing * 3;
 
         for (idx, child_view) in children.into_iter().enumerate() {
-            let local_child = self.env.new_local_ref(child_view.global_ref.as_obj()).unwrap();
+            let local_child = self
+                .env
+                .new_local_ref(child_view.global_ref.as_obj())
+                .unwrap();
 
             let child_params = jnew!(self.env, "android/widget/LinearLayout$LayoutParams", ((int, int) -> void), [JValue::Int(-2), JValue::Int(-2)]);
-            self.env.set_field(&child_params, "gravity", "I", JValue::Int(1)).unwrap();
+            self.env
+                .set_field(&child_params, "gravity", "I", JValue::Int(1))
+                .unwrap();
 
             if spacing > 0 && idx > 0 {
-                let (margin_l, margin_t) = if direction == LayoutDirection::Vertical { (0, real_spacing) } else { (real_spacing, 0) };
+                let (margin_l, margin_t) = if direction == LayoutDirection::Vertical {
+                    (0, real_spacing)
+                } else {
+                    (real_spacing, 0)
+                };
                 jcall!(self.env, &child_params, "setMargins", ((int, int, int, int) -> void), [JValue::Int(margin_l), JValue::Int(margin_t), JValue::Int(0), JValue::Int(0)]).unwrap();
             }
 
@@ -1040,14 +1537,19 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
 
         set_layout_params!(self.env, &scroll_view, -1, -1);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(scroll_view).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(scroll_view).unwrap()),
+        }
     }
 
     fn create_overlay(&mut self, children: Vec<Self::PlatformView>) -> Self::PlatformView {
         let frame = new_widget!(self.env, "android/widget/FrameLayout", self.context);
 
         for child_view in children {
-            let local_child = self.env.new_local_ref(child_view.global_ref.as_obj()).unwrap();
+            let local_child = self
+                .env
+                .new_local_ref(child_view.global_ref.as_obj())
+                .unwrap();
 
             // Read back whatever `apply_offset_x`/`apply_offset_y` stashed
             // as a margin on the child's *current* `LayoutParams` (set by
@@ -1056,17 +1558,36 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
             // comments for why a margin is the carrier.
             let old_params = jcall!(self.env, &local_child, "getLayoutParams", (() -> "android/view/ViewGroup$LayoutParams"), []).ok().and_then(|r| r.l().ok());
             let (left, top) = match &old_params {
-                Some(p) if self.env.is_instance_of(p, "android/view/ViewGroup$MarginLayoutParams").unwrap_or(false) => {
-                    let l = self.env.get_field(p, "leftMargin", "I").ok().and_then(|v| v.i().ok()).unwrap_or(0);
-                    let t = self.env.get_field(p, "topMargin", "I").ok().and_then(|v| v.i().ok()).unwrap_or(0);
+                Some(p)
+                    if self
+                        .env
+                        .is_instance_of(p, "android/view/ViewGroup$MarginLayoutParams")
+                        .unwrap_or(false) =>
+                {
+                    let l = self
+                        .env
+                        .get_field(p, "leftMargin", "I")
+                        .ok()
+                        .and_then(|v| v.i().ok())
+                        .unwrap_or(0);
+                    let t = self
+                        .env
+                        .get_field(p, "topMargin", "I")
+                        .ok()
+                        .and_then(|v| v.i().ok())
+                        .unwrap_or(0);
                     (l, t)
                 }
                 _ => (0, 0),
             };
 
             let frame_params = jnew!(self.env, "android/widget/FrameLayout$LayoutParams", ((int, int) -> void), [JValue::Int(-2), JValue::Int(-2)]);
-            self.env.set_field(&frame_params, "leftMargin", "I", JValue::Int(left)).unwrap();
-            self.env.set_field(&frame_params, "topMargin", "I", JValue::Int(top)).unwrap();
+            self.env
+                .set_field(&frame_params, "leftMargin", "I", JValue::Int(left))
+                .unwrap();
+            self.env
+                .set_field(&frame_params, "topMargin", "I", JValue::Int(top))
+                .unwrap();
             jcall!(self.env, &local_child, "setLayoutParams", (("android/view/ViewGroup$LayoutParams") -> void), [JValue::Object(&frame_params)]).unwrap();
 
             // No `Axis::ZIndex` tracking on this backend (see
@@ -1078,7 +1599,9 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
 
         set_layout_params!(self.env, &frame, -2, -2);
 
-        AndroidView { global_ref: Arc::new(self.env.new_global_ref(frame).unwrap()) }
+        AndroidView {
+            global_ref: Arc::new(self.env.new_global_ref(frame).unwrap()),
+        }
     }
 
     fn apply_style(&mut self, view: &Self::PlatformView, style: StyleProperty) {
@@ -1096,7 +1619,9 @@ impl<'a, 'b> Backend for AndroidBackend<'a, 'b> {
             Some(applier) => applier(&mut *self.env, &local_view, &value),
             None => {
                 #[cfg(debug_assertions)]
-                eprintln!("goyda(android): axis {axis:?} is not supported on this backend, skipped");
+                eprintln!(
+                    "goyda(android): axis {axis:?} is not supported on this backend, skipped"
+                );
             }
         }
     }

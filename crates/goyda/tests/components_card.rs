@@ -1,7 +1,7 @@
 //! Tests for `src/components/card.rs`.
 
-use goyda::{Axis, Color, Component, Edge, StyleValue};
 use goyda::components::Card;
+use goyda::{Axis, Color, Component, Edge, StyleValue};
 
 #[test]
 fn card_wraps_children_in_a_pre_styled_vertical_stack() {

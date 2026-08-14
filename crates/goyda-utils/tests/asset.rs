@@ -1,7 +1,7 @@
 //! Tests for `src/asset.rs`.
 
 use goyda_utils::Asset;
-use goyda_utils::asset::{extension, font_format_hint, mime_type, is_svg};
+use goyda_utils::asset::{extension, font_format_hint, is_svg, mime_type};
 
 #[test]
 fn new_normalizes_a_leading_slash() {

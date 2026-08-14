@@ -1,8 +1,8 @@
 //! Tests for `src/components/link.rs`.
 
-use goyda::{Axis, Color, Component, StyleValue};
 use goyda::components::Link;
 use goyda::core::events::Event;
+use goyda::{Axis, Color, Component, StyleValue};
 
 #[test]
 fn link_is_primary_colored_text_with_a_click_handler() {
@@ -13,7 +13,10 @@ fn link_is_primary_colored_text_with_a_click_handler() {
     let clicked_clone = clicked.clone();
 
     match Link::new("Click me", move || clicked_clone.set(true)) {
-        Component::WithHandlers { component, handlers } => {
+        Component::WithHandlers {
+            component,
+            handlers,
+        } => {
             assert_eq!(handlers.len(), 1);
 
             match *component {

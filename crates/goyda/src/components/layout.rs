@@ -8,6 +8,10 @@ pub struct Stack {
 
 impl Stack {
     pub fn new(direction: LayoutDirection, spacing: i32, children: Vec<Component>) -> Component {
-        Component::Stack(Self { direction, spacing, children })
+        Component::Stack(Self {
+            direction,
+            spacing,
+            children,
+        })
     }
 }

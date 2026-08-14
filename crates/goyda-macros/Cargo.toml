@@ -2,6 +2,8 @@
 name = "goyda-macros"
 version = "0.1.0"
 edition = "2021"
+description = "Declarative listener macros for goyda - internal, not meant to be used directly"
+license = "MIT"
 
 [dependencies]
 # Note: this crate only ever *emits* paths like `::jni::...`, `::paste::paste!`,

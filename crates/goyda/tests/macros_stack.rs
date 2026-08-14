@@ -92,7 +92,10 @@ fn button_item_with_handler_attaches_the_action() {
     };
     match s {
         Component::Stack(stack) => match &stack.children[0] {
-            Component::WithHandlers { component, handlers } => {
+            Component::WithHandlers {
+                component,
+                handlers,
+            } => {
                 assert!(matches!(**component, Component::Button(_)));
                 assert_eq!(handlers.len(), 1);
                 (handlers[0].callback)(goyda::core::events::Event::Click);
@@ -163,7 +166,10 @@ fn text_input_checkbox_switch_progress_radio_button_textarea_items() {
                 _ => panic!("expected TextInput"),
             }
             match &stack.children[1] {
-                Component::Checkbox(c) => { assert_eq!(c.label, "Accept"); assert!(c.checked); }
+                Component::Checkbox(c) => {
+                    assert_eq!(c.label, "Accept");
+                    assert!(c.checked);
+                }
                 _ => panic!("expected Checkbox"),
             }
             match &stack.children[2] {
@@ -175,7 +181,11 @@ fn text_input_checkbox_switch_progress_radio_button_textarea_items() {
                 _ => panic!("expected Progress"),
             }
             match &stack.children[4] {
-                Component::RadioButton(r) => { assert_eq!(r.group, "g"); assert_eq!(r.label, "A"); assert!(r.selected); }
+                Component::RadioButton(r) => {
+                    assert_eq!(r.group, "g");
+                    assert_eq!(r.label, "A");
+                    assert!(r.selected);
+                }
                 _ => panic!("expected RadioButton"),
             }
             match &stack.children[5] {

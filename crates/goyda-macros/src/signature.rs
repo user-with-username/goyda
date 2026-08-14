@@ -47,12 +47,28 @@ macro_rules! sig_args {
 #[macro_export]
 #[doc(hidden)]
 macro_rules! sig_ret {
-    (int) => { "I" };
-    (boolean) => { "Z" };
-    (float) => { "F" };
-    (long) => { "J" };
-    (byte) => { "B" };
-    (void) => { "V" };
-    ([$elem:tt]) => { concat!("[", $crate::sig_ret!($elem)) };
-    ($class:literal) => { concat!("L", $class, ";") };
+    (int) => {
+        "I"
+    };
+    (boolean) => {
+        "Z"
+    };
+    (float) => {
+        "F"
+    };
+    (long) => {
+        "J"
+    };
+    (byte) => {
+        "B"
+    };
+    (void) => {
+        "V"
+    };
+    ([$elem:tt]) => {
+        concat!("[", $crate::sig_ret!($elem))
+    };
+    ($class:literal) => {
+        concat!("L", $class, ";")
+    };
 }

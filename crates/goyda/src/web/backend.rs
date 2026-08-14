@@ -4,7 +4,9 @@ use std::collections::HashSet;
 use wasm_bindgen::JsCast;
 use web_sys::{Document, Element, HtmlElement};
 
-use crate::components::{Align, Asset, Axis, Color, Edge, LayoutDirection, StyleProperty, StyleValue};
+use crate::components::{
+    Align, Asset, Axis, Color, Edge, LayoutDirection, StyleProperty, StyleValue,
+};
 use crate::core::events::Update;
 use crate::core::{Backend, BackendUpdater};
 
@@ -174,7 +176,11 @@ fn apply_style_to_element(element: &Element, StyleProperty(axis, value): &StyleP
                 // at the same size with a different color, without needing
                 // to parse the shorthand back out of the inline style.
                 let _ = element.set_attribute("data-shadow-px", &v.to_string());
-                set_style(element, "box-shadow", &format!("0 {v}px {v}px rgba(0, 0, 0, 0.25)"));
+                set_style(
+                    element,
+                    "box-shadow",
+                    &format!("0 {v}px {v}px rgba(0, 0, 0, 0.25)"),
+                );
             }
         }
         Axis::Opacity => {
@@ -217,12 +223,20 @@ fn apply_style_to_element(element: &Element, StyleProperty(axis, value): &StyleP
         }
         Axis::FontWeight => {
             if let StyleValue::Bool(bold) = value {
-                set_style(element, "font-weight", if *bold { "bold" } else { "normal" });
+                set_style(
+                    element,
+                    "font-weight",
+                    if *bold { "bold" } else { "normal" },
+                );
             }
         }
         Axis::FontStyle => {
             if let StyleValue::Bool(italic) = value {
-                set_style(element, "font-style", if *italic { "italic" } else { "normal" });
+                set_style(
+                    element,
+                    "font-style",
+                    if *italic { "italic" } else { "normal" },
+                );
             }
         }
         Axis::TextAlign => {
@@ -252,12 +266,20 @@ fn apply_style_to_element(element: &Element, StyleProperty(axis, value): &StyleP
         }
         Axis::Underline => {
             if let StyleValue::Bool(v) = value {
-                set_style(element, "text-decoration", if *v { "underline" } else { "none" });
+                set_style(
+                    element,
+                    "text-decoration",
+                    if *v { "underline" } else { "none" },
+                );
             }
         }
         Axis::Strikethrough => {
             if let StyleValue::Bool(v) = value {
-                set_style(element, "text-decoration", if *v { "line-through" } else { "none" });
+                set_style(
+                    element,
+                    "text-decoration",
+                    if *v { "line-through" } else { "none" },
+                );
             }
         }
         Axis::TextOverflowEllipsis => {
@@ -277,8 +299,15 @@ fn apply_style_to_element(element: &Element, StyleProperty(axis, value): &StyleP
             // order for a `Styled` chain) so `data-shadow-px` is already
             // stashed - see `Axis::Shadow` above.
             if let StyleValue::Color(c) = value {
-                let shadow_px: f32 = element.get_attribute("data-shadow-px").and_then(|s| s.parse().ok()).unwrap_or(4.0);
-                set_style(element, "box-shadow", &format!("0 {shadow_px}px {shadow_px}px {}", css_color(*c)));
+                let shadow_px: f32 = element
+                    .get_attribute("data-shadow-px")
+                    .and_then(|s| s.parse().ok())
+                    .unwrap_or(4.0);
+                set_style(
+                    element,
+                    "box-shadow",
+                    &format!("0 {shadow_px}px {shadow_px}px {}", css_color(*c)),
+                );
             }
         }
         Axis::OffsetX => {
@@ -473,7 +502,9 @@ impl Backend for WebBackend {
         let _ = wrapper.append_child(&input);
 
         if !label.is_empty() {
-            let text = document().create_element("span").expect("goyda(web): failed to create <span>");
+            let text = document()
+                .create_element("span")
+                .expect("goyda(web): failed to create <span>");
             text.set_text_content(Some(label));
             let _ = wrapper.append_child(&text);
         }
@@ -481,17 +512,26 @@ impl Backend for WebBackend {
         WebView { element: wrapper }
     }
 
-    fn create_radio_button(&mut self, group: &str, label: &str, selected: bool) -> Self::PlatformView {
+    fn create_radio_button(
+        &mut self,
+        group: &str,
+        label: &str,
+        selected: bool,
+    ) -> Self::PlatformView {
         // `name="{group}"` gives mutual exclusion for free - the browser
         // itself deselects every other `input[type=radio]` sharing that
         // name the moment this one gets selected, no extra JS needed.
-        let wrapper = document().create_element("label").expect("goyda(web): failed to create <label>");
+        let wrapper = document()
+            .create_element("label")
+            .expect("goyda(web): failed to create <label>");
         set_style(&wrapper, "display", "inline-flex");
         set_style(&wrapper, "align-items", "center");
         set_style(&wrapper, "gap", "6px");
         set_style(&wrapper, "cursor", "pointer");
 
-        let input = document().create_element("input").expect("goyda(web): failed to create <input>");
+        let input = document()
+            .create_element("input")
+            .expect("goyda(web): failed to create <input>");
         let _ = input.set_attribute("type", "radio");
         let _ = input.set_attribute("name", group);
         if selected {
@@ -500,7 +540,9 @@ impl Backend for WebBackend {
         let _ = wrapper.append_child(&input);
 
         if !label.is_empty() {
-            let text = document().create_element("span").expect("goyda(web): failed to create <span>");
+            let text = document()
+                .create_element("span")
+                .expect("goyda(web): failed to create <span>");
             text.set_text_content(Some(label));
             let _ = wrapper.append_child(&text);
         }
@@ -519,17 +561,23 @@ impl Backend for WebBackend {
         // of its own to show which way it's toggled.
         ensure_switch_style_injected();
 
-        let wrapper = document().create_element("label").expect("goyda(web): failed to create <label>");
+        let wrapper = document()
+            .create_element("label")
+            .expect("goyda(web): failed to create <label>");
         let _ = wrapper.set_attribute("class", "goyda-switch");
 
-        let input = document().create_element("input").expect("goyda(web): failed to create <input>");
+        let input = document()
+            .create_element("input")
+            .expect("goyda(web): failed to create <input>");
         let _ = input.set_attribute("type", "checkbox");
         if checked {
             let _ = input.set_attribute("checked", "checked");
         }
         let _ = wrapper.append_child(&input);
 
-        let track = document().create_element("span").expect("goyda(web): failed to create <span>");
+        let track = document()
+            .create_element("span")
+            .expect("goyda(web): failed to create <span>");
         let _ = track.set_attribute("class", "goyda-switch-track");
         let _ = wrapper.append_child(&track);
 
@@ -606,7 +654,12 @@ impl Backend for WebBackend {
         WebView { element }
     }
 
-    fn create_scroll_view(&mut self, direction: LayoutDirection, spacing: i32, children: Vec<Self::PlatformView>) -> Self::PlatformView {
+    fn create_scroll_view(
+        &mut self,
+        direction: LayoutDirection,
+        spacing: i32,
+        children: Vec<Self::PlatformView>,
+    ) -> Self::PlatformView {
         let view = self.create_stack(direction, spacing, children);
         match direction {
             LayoutDirection::Vertical => set_style(&view.element, "overflow-y", "auto"),
@@ -616,7 +669,9 @@ impl Backend for WebBackend {
     }
 
     fn create_overlay(&mut self, children: Vec<Self::PlatformView>) -> Self::PlatformView {
-        let element = document().create_element("div").expect("goyda(web): failed to create <div>");
+        let element = document()
+            .create_element("div")
+            .expect("goyda(web): failed to create <div>");
         set_style(&element, "position", "relative");
 
         for child in &children {

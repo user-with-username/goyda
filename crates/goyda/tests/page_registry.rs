@@ -1,9 +1,13 @@
 //! Tests for `src/lib.rs`: `Page` and `find_page`.
 
-use goyda::{find_page, Component, Page};
+use goyda::{Component, Page, find_page};
 
-fn home() -> Component { Component::text(|| "home".into()) }
-fn about() -> Component { Component::text(|| "about".into()) }
+fn home() -> Component {
+    Component::text(|| "home".into())
+}
+fn about() -> Component {
+    Component::text(|| "about".into())
+}
 
 goyda::inventory::submit! { Page::new("/", home) }
 goyda::inventory::submit! { Page::new("/about", about) }

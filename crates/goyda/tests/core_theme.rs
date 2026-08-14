@@ -4,7 +4,7 @@
 //! in one `#[test]` to avoid interleaving with other tests that might touch
 //! the same state (`cargo test` runs tests in parallel threads by default).
 
-use goyda::{theme_index, set_theme, cycle_theme, ThemeMode};
+use goyda::{ThemeMode, cycle_theme, set_theme, theme_index};
 
 #[test]
 fn theme_state_transitions() {

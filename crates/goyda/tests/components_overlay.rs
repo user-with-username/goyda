@@ -5,7 +5,10 @@ use goyda::components::Overlay;
 
 #[test]
 fn new_sets_children() {
-    let children = vec![Component::text(|| "a".into()), Component::text(|| "b".into())];
+    let children = vec![
+        Component::text(|| "a".into()),
+        Component::text(|| "b".into()),
+    ];
     match Overlay::new(children) {
         Component::Overlay(o) => assert_eq!(o.children.len(), 2),
         _ => panic!("expected Component::Overlay"),

@@ -51,7 +51,12 @@ pub fn toggle_checked(hwnd: WinHwnd) -> bool {
 /// on click (a checkbox, switch, or radio button).
 pub fn is_self_toggling(hwnd: WinHwnd) -> bool {
     state::with_state(hwnd, |s| {
-        matches!(s.kind, state::ControlKind::Checkbox { .. } | state::ControlKind::Switch | state::ControlKind::RadioButton { .. })
+        matches!(
+            s.kind,
+            state::ControlKind::Checkbox { .. }
+                | state::ControlKind::Switch
+                | state::ControlKind::RadioButton { .. }
+        )
     })
     .unwrap_or(false)
 }
@@ -64,7 +69,10 @@ pub fn is_checked(hwnd: WinHwnd) -> bool {
 /// Adds `hwnd` to the named radio button group.
 pub fn register_radio(hwnd: WinHwnd, group: &str) {
     state::RADIO_GROUPS.with(|g| {
-        g.borrow_mut().entry(group.to_string()).or_default().push(hwnd);
+        g.borrow_mut()
+            .entry(group.to_string())
+            .or_default()
+            .push(hwnd);
     });
 }
 
@@ -90,7 +98,10 @@ pub fn select_radio(hwnd: WinHwnd, group: &str) {
 
 /// Returns whether `hwnd` is a text input control.
 pub fn is_text_input(hwnd: WinHwnd) -> bool {
-    state::with_state(hwnd, |s| matches!(s.kind, state::ControlKind::TextInput { .. })).unwrap_or(false)
+    state::with_state(hwnd, |s| {
+        matches!(s.kind, state::ControlKind::TextInput { .. })
+    })
+    .unwrap_or(false)
 }
 
 /// Returns a text control's current contents.
@@ -145,7 +156,9 @@ pub fn current_progress(hwnd: WinHwnd) -> f32 {
 
 /// Scrolls a scroll view by `delta` pixels, clamped to its content bounds.
 pub fn scroll_by(hwnd: WinHwnd, delta: i32) {
-    let Some((direction, content_main)) = layout::content_main_size(hwnd) else { return };
+    let Some((direction, content_main)) = layout::content_main_size(hwnd) else {
+        return;
+    };
     let rect = state::client_rect(hwnd);
     let viewport_main = match direction {
         crate::components::LayoutDirection::Horizontal => rect.right,
@@ -164,13 +177,14 @@ use std::cell::RefCell;
 
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, LPARAM, LRESULT, WPARAM};
 use windows_sys::Win32::Graphics::Gdi::{
-    InvalidateRect, RedrawWindow, UpdateWindow, COLOR_WINDOW, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW,
+    COLOR_WINDOW, InvalidateRect, RDW_ALLCHILDREN, RDW_ERASE, RDW_INVALIDATE, RDW_UPDATENOW,
+    RedrawWindow, UpdateWindow,
 };
 use windows_sys::Win32::System::DataExchange::COPYDATASTRUCT;
 use windows_sys::Win32::System::LibraryLoader::{GetModuleHandleW, LoadLibraryW};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
-use crate::{find_page, Component, LayoutDirection, Page};
+use crate::{Component, LayoutDirection, Page, find_page};
 
 const ROOT_CLASS_NAME: &str = "GoydaRoot\0";
 
@@ -185,7 +199,7 @@ thread_local! {
 }
 
 fn detect_theme_mode() -> crate::core::theme::ThemeMode {
-    use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
+    use windows_sys::Win32::System::Registry::{HKEY_CURRENT_USER, RRF_RT_REG_DWORD, RegGetValueW};
 
     let subkey = wide("Software\\Microsoft\\Windows\\CurrentVersion\\Themes\\Personalize");
     let value_name = wide("AppsUseLightTheme");
@@ -211,7 +225,12 @@ fn detect_theme_mode() -> crate::core::theme::ThemeMode {
     }
 }
 
-unsafe extern "system" fn root_wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+unsafe extern "system" fn root_wndproc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     unsafe {
         match msg {
             WM_DESTROY => {
@@ -243,7 +262,8 @@ unsafe extern "system" fn root_wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lpa
             WM_COPYDATA => {
                 let cds = &*(lparam as *const COPYDATASTRUCT);
                 if !cds.lpData.is_null() && cds.cbData > 0 {
-                    let bytes = std::slice::from_raw_parts(cds.lpData as *const u8, cds.cbData as usize);
+                    let bytes =
+                        std::slice::from_raw_parts(cds.lpData as *const u8, cds.cbData as usize);
                     if let Ok(path) = std::str::from_utf8(bytes) {
                         hot_swap_dylib(path);
                     }
@@ -300,7 +320,12 @@ fn mount(hinstance: HINSTANCE, root: HWND, page: &Page, fit_window: bool) {
             let (w, h) = state::natural_size(view.hwnd);
             MoveWindow(view.hwnd, 0, 0, w, h, 1);
 
-            let mut rect = windows_sys::Win32::Foundation::RECT { left: 0, top: 0, right: w, bottom: h };
+            let mut rect = windows_sys::Win32::Foundation::RECT {
+                left: 0,
+                top: 0,
+                right: w,
+                bottom: h,
+            };
             AdjustWindowRectEx(&mut rect, WS_OVERLAPPEDWINDOW, 0, 0);
             SetWindowPos(
                 root,
@@ -313,7 +338,11 @@ fn mount(hinstance: HINSTANCE, root: HWND, page: &Page, fit_window: bool) {
             );
         } else {
             let client = state::client_rect(root);
-            layout::relayout(view.hwnd, client.right - client.left, client.bottom - client.top);
+            layout::relayout(
+                view.hwnd,
+                client.right - client.left,
+                client.bottom - client.top,
+            );
         }
 
         InvalidateRect(root, std::ptr::null(), 1);
@@ -324,7 +353,9 @@ fn mount(hinstance: HINSTANCE, root: HWND, page: &Page, fit_window: bool) {
 }
 
 fn remount(page: &Page) {
-    let Some((hinstance, root)) = ROOT.with(|r| *r.borrow()) else { return };
+    let Some((hinstance, root)) = ROOT.with(|r| *r.borrow()) else {
+        return;
+    };
 
     unsafe {
         // Suppress repainting for the whole teardown-then-rebuild sequence -
@@ -360,7 +391,9 @@ fn remount(page: &Page) {
 pub fn navigate(path: &str) {
     let Some(page) = find_page(path) else {
         #[cfg(debug_assertions)]
-        eprintln!("goyda(windows): navigate(\"{path}\") - no #[page(...)] registered for that route");
+        eprintln!(
+            "goyda(windows): navigate(\"{path}\") - no #[page(...)] registered for that route"
+        );
         return;
     };
 
@@ -384,7 +417,9 @@ fn hot_swap_dylib(path: &str) {
     }
 
     let current_path = CURRENT_PATH.with(|p| p.borrow().clone());
-    let Some(page) = find_page(&current_path) else { return };
+    let Some(page) = find_page(&current_path) else {
+        return;
+    };
     remount(page);
 }
 
@@ -395,7 +430,12 @@ fn install_panic_hook() {
         let text = wide(&info.to_string());
         let title = wide("goyda: unexpected error");
         unsafe {
-            MessageBoxW(std::ptr::null_mut(), text.as_ptr(), title.as_ptr(), MB_OK | MB_ICONERROR);
+            MessageBoxW(
+                std::ptr::null_mut(),
+                text.as_ptr(),
+                title.as_ptr(),
+                MB_OK | MB_ICONERROR,
+            );
         }
     }));
 }

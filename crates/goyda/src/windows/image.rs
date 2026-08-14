@@ -15,7 +15,11 @@ fn rasterize_svg(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
         return None;
     }
     let mut pixmap = resvg::tiny_skia::Pixmap::new(width, height)?;
-    resvg::render(&tree, resvg::tiny_skia::Transform::default(), &mut pixmap.as_mut());
+    resvg::render(
+        &tree,
+        resvg::tiny_skia::Transform::default(),
+        &mut pixmap.as_mut(),
+    );
     Some((width, height, pixmap.data().to_vec()))
 }
 
@@ -32,7 +36,10 @@ fn rgba_to_premultiplied_bgra(rgba: &[u8]) -> Vec<u8> {
 }
 
 pub fn decode_to_bitmap(asset: &Asset) -> Option<(HBITMAP, i32, i32)> {
-    let bytes = asset.bytes().map(|b| b.to_vec()).or_else(|| read_asset_file(asset.path()))?;
+    let bytes = asset
+        .bytes()
+        .map(|b| b.to_vec())
+        .or_else(|| read_asset_file(asset.path()))?;
 
     let (width, height, rgba) = if goyda_utils::asset::is_svg(asset) {
         rasterize_svg(&bytes)?
@@ -57,7 +64,14 @@ pub fn decode_to_bitmap(asset: &Asset) -> Option<(HBITMAP, i32, i32)> {
 
         let screen_dc = GetDC(std::ptr::null_mut());
         let mut bits: *mut core::ffi::c_void = std::ptr::null_mut();
-        let hbitmap = CreateDIBSection(screen_dc, &bmi, DIB_RGB_COLORS, &mut bits, std::ptr::null_mut(), 0);
+        let hbitmap = CreateDIBSection(
+            screen_dc,
+            &bmi,
+            DIB_RGB_COLORS,
+            &mut bits,
+            std::ptr::null_mut(),
+            0,
+        );
         ReleaseDC(std::ptr::null_mut(), screen_dc);
 
         if hbitmap.is_null() || bits.is_null() {

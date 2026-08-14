@@ -10,11 +10,17 @@ impl TextInput {
     /// `.on_text_watcher(...)` (see [`crate::listeners`]) - the platform
     /// gives back the field's full current text on every keystroke.
     pub fn new(placeholder: impl Into<String>) -> Component {
-        Component::TextInput(Self { placeholder: placeholder.into(), initial_text: String::new() })
+        Component::TextInput(Self {
+            placeholder: placeholder.into(),
+            initial_text: String::new(),
+        })
     }
 
     /// Same as [`TextInput::new`], pre-filled with `initial_text`.
     pub fn with_text(placeholder: impl Into<String>, initial_text: impl Into<String>) -> Component {
-        Component::TextInput(Self { placeholder: placeholder.into(), initial_text: initial_text.into() })
+        Component::TextInput(Self {
+            placeholder: placeholder.into(),
+            initial_text: initial_text.into(),
+        })
     }
 }

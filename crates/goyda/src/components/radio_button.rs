@@ -15,6 +15,10 @@ impl RadioButton {
     /// `false`, since a radio button only ever deselects because a sibling
     /// got selected instead).
     pub fn new(group: impl Into<String>, label: impl Into<String>, selected: bool) -> Component {
-        Component::RadioButton(Self { group: group.into(), label: label.into(), selected })
+        Component::RadioButton(Self {
+            group: group.into(),
+            label: label.into(),
+            selected,
+        })
     }
 }

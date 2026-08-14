@@ -1,41 +1,41 @@
-pub mod text;
+pub mod badge;
 pub mod button;
+pub mod card;
+pub mod checkbox;
+pub mod divider;
 pub mod image;
 pub mod layout;
-pub mod style;
-pub mod text_input;
-pub mod checkbox;
-pub mod switch;
-pub mod progress;
-pub mod spacer;
-pub mod divider;
-pub mod scroll_view;
-pub mod textarea;
-pub mod radio_button;
-pub mod card;
-pub mod badge;
 pub mod link;
 pub mod overlay;
+pub mod progress;
+pub mod radio_button;
+pub mod scroll_view;
+pub mod spacer;
+pub mod style;
+pub mod switch;
+pub mod text;
+pub mod text_input;
+pub mod textarea;
 
-pub use text::Text;
+pub use badge::Badge;
 pub use button::Button;
+pub use card::Card;
+pub use checkbox::Checkbox;
+pub use divider::Divider;
+pub use goyda_utils::{Asset, Color};
 pub use image::Image;
 pub use layout::Stack;
-pub use style::{Align, Axis, Edge, StyleProperty, StyleValue};
-pub use goyda_utils::{Asset, Color};
-pub use text_input::TextInput;
-pub use checkbox::Checkbox;
-pub use switch::Switch;
-pub use progress::Progress;
-pub use spacer::Spacer;
-pub use divider::Divider;
-pub use scroll_view::ScrollView;
-pub use textarea::Textarea;
-pub use radio_button::RadioButton;
-pub use card::Card;
-pub use badge::Badge;
 pub use link::Link;
 pub use overlay::Overlay;
+pub use progress::Progress;
+pub use radio_button::RadioButton;
+pub use scroll_view::ScrollView;
+pub use spacer::Spacer;
+pub use style::{Align, Axis, Edge, StyleProperty, StyleValue};
+pub use switch::Switch;
+pub use text::Text;
+pub use text_input::TextInput;
+pub use textarea::Textarea;
 
 use crate::core::Backend;
 use crate::core::events::{Event, Update};
@@ -43,13 +43,17 @@ use crate::reactive::reactive;
 use std::rc::Rc;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
-pub enum LayoutDirection { Horizontal, Vertical }
+pub enum LayoutDirection {
+    Horizontal,
+    Vertical,
+}
 
 #[derive(Debug, Clone, Copy)]
 pub struct Modifier;
 
 pub struct Handler {
-    pub attach: fn(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event) + 'static>),
+    pub attach:
+        fn(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event) + 'static>),
     pub callback: Rc<dyn Fn(Event) + 'static>,
 }
 
@@ -80,7 +84,9 @@ pub enum Component {
 
 impl Component {
     pub fn text(compute: impl Fn() -> String + 'static) -> Self {
-        Self::Text(Text { compute: Rc::new(compute) })
+        Self::Text(Text {
+            compute: Rc::new(compute),
+        })
     }
 
     pub fn button(label: impl Into<String>) -> Self {
@@ -88,11 +94,17 @@ impl Component {
     }
 
     pub fn image(asset: impl Into<Asset>) -> Self {
-        Self::Image(Image { asset: asset.into() })
+        Self::Image(Image {
+            asset: asset.into(),
+        })
     }
 
     pub fn stack(direction: LayoutDirection, spacing: i32, children: Vec<Component>) -> Self {
-        Self::Stack(Stack { direction, spacing, children })
+        Self::Stack(Stack {
+            direction,
+            spacing,
+            children,
+        })
     }
 
     /// A stacking context (`position: absolute` children) - see
@@ -104,28 +116,49 @@ impl Component {
     /// A scrollable [`Stack`] - give it a fixed size with `.height(px)`/
     /// `.width(px)` for scrolling to actually kick in.
     pub fn scroll_view(direction: LayoutDirection, spacing: i32, children: Vec<Component>) -> Self {
-        Self::ScrollView(ScrollView { direction, spacing, children })
+        Self::ScrollView(ScrollView {
+            direction,
+            spacing,
+            children,
+        })
     }
 
     /// A single-line editable text field.
     pub fn text_input(placeholder: impl Into<String>) -> Self {
-        Self::TextInput(TextInput { placeholder: placeholder.into(), initial_text: String::new() })
+        Self::TextInput(TextInput {
+            placeholder: placeholder.into(),
+            initial_text: String::new(),
+        })
     }
 
     /// A multi-line editable text field.
     pub fn textarea(placeholder: impl Into<String>) -> Self {
-        Self::Textarea(Textarea { placeholder: placeholder.into(), initial_text: String::new() })
+        Self::Textarea(Textarea {
+            placeholder: placeholder.into(),
+            initial_text: String::new(),
+        })
     }
 
     /// A labeled checkbox, starting `checked` or not.
     pub fn checkbox(label: impl Into<String>, checked: bool) -> Self {
-        Self::Checkbox(Checkbox { label: label.into(), checked })
+        Self::Checkbox(Checkbox {
+            label: label.into(),
+            checked,
+        })
     }
 
     /// A labeled radio button - selecting it deselects every other
     /// `RadioButton` sharing the same `group` string.
-    pub fn radio_button(group: impl Into<String>, label: impl Into<String>, selected: bool) -> Self {
-        Self::RadioButton(RadioButton { group: group.into(), label: label.into(), selected })
+    pub fn radio_button(
+        group: impl Into<String>,
+        label: impl Into<String>,
+        selected: bool,
+    ) -> Self {
+        Self::RadioButton(RadioButton {
+            group: group.into(),
+            label: label.into(),
+            selected,
+        })
     }
 
     /// An on/off toggle switch, starting `checked` or not.
@@ -135,7 +168,9 @@ impl Component {
 
     /// A horizontal progress bar; `compute` should return values in `0.0..=1.0`.
     pub fn progress(compute: impl Fn() -> f32 + 'static) -> Self {
-        Self::Progress(Progress { compute: Rc::new(compute) })
+        Self::Progress(Progress {
+            compute: Rc::new(compute),
+        })
     }
 
     /// A fixed-size, invisible gap along the enclosing stack's axis.
@@ -165,7 +200,10 @@ impl Component {
 
     pub fn style(self, property: StyleProperty) -> Self {
         match self {
-            Component::Styled { component, mut styles } => {
+            Component::Styled {
+                component,
+                mut styles,
+            } => {
                 styles.push(property);
                 Component::Styled { component, styles }
             }
@@ -181,22 +219,36 @@ impl Component {
     }
 
     pub fn background(self, color: Color) -> Self {
-        self.style(StyleProperty(Axis::BackgroundColor, StyleValue::Color(color)))
+        self.style(StyleProperty(
+            Axis::BackgroundColor,
+            StyleValue::Color(color),
+        ))
     }
 
     pub fn font_size(self, size: i32) -> Self {
-        self.style(StyleProperty(Axis::FontSize, StyleValue::Length(size as f32)))
+        self.style(StyleProperty(
+            Axis::FontSize,
+            StyleValue::Length(size as f32),
+        ))
     }
 
     /// Sets a custom font, loaded from an asset (e.g. `.font("fonts/Inter-Bold.ttf")`).
     pub fn font(self, asset: impl Into<Asset>) -> Self {
-        self.style(StyleProperty(Axis::FontFamily, StyleValue::Asset(asset.into())))
+        self.style(StyleProperty(
+            Axis::FontFamily,
+            StyleValue::Asset(asset.into()),
+        ))
     }
 
     pub fn padding(self, horizontal: i32, vertical: i32) -> Self {
-        self
-            .style(StyleProperty(Axis::Padding(Edge::Horizontal), StyleValue::Length(horizontal as f32)))
-            .style(StyleProperty(Axis::Padding(Edge::Vertical), StyleValue::Length(vertical as f32)))
+        self.style(StyleProperty(
+            Axis::Padding(Edge::Horizontal),
+            StyleValue::Length(horizontal as f32),
+        ))
+        .style(StyleProperty(
+            Axis::Padding(Edge::Vertical),
+            StyleValue::Length(vertical as f32),
+        ))
     }
 
     /// A fixed width in pixels, overriding the component's own wrap-content
@@ -239,17 +291,26 @@ impl Component {
     /// `Start` - children packed together at the top/left with `spacing`
     /// between them, same as every backend has always done).
     pub fn justify(self, align: Align) -> Self {
-        self.style(StyleProperty(Axis::JustifyContent, StyleValue::Align(align)))
+        self.style(StyleProperty(
+            Axis::JustifyContent,
+            StyleValue::Align(align),
+        ))
     }
 
     /// Distance between lines of wrapped/multi-line text, in pixels.
     pub fn line_height(self, px: i32) -> Self {
-        self.style(StyleProperty(Axis::LineHeight, StyleValue::Length(px as f32)))
+        self.style(StyleProperty(
+            Axis::LineHeight,
+            StyleValue::Length(px as f32),
+        ))
     }
 
     /// Extra space between characters, in pixels.
     pub fn letter_spacing(self, px: i32) -> Self {
-        self.style(StyleProperty(Axis::LetterSpacing, StyleValue::Length(px as f32)))
+        self.style(StyleProperty(
+            Axis::LetterSpacing,
+            StyleValue::Length(px as f32),
+        ))
     }
 
     pub fn underline(self) -> Self {
@@ -262,7 +323,10 @@ impl Component {
 
     /// Truncates to a single line with a trailing "…" instead of wrapping.
     pub fn ellipsis(self) -> Self {
-        self.style(StyleProperty(Axis::TextOverflowEllipsis, StyleValue::Bool(true)))
+        self.style(StyleProperty(
+            Axis::TextOverflowEllipsis,
+            StyleValue::Bool(true),
+        ))
     }
 
     /// Clips content that overflows this component's bounds - mostly
@@ -280,9 +344,14 @@ impl Component {
     /// pixels from its top-left corner, out of normal flow - `position:
     /// absolute` in CSS terms. No-op outside an `Overlay`.
     pub fn offset(self, offset_x: i32, offset_y: i32) -> Self {
-        self
-            .style(StyleProperty(Axis::OffsetX, StyleValue::Length(offset_x as f32)))
-            .style(StyleProperty(Axis::OffsetY, StyleValue::Length(offset_y as f32)))
+        self.style(StyleProperty(
+            Axis::OffsetX,
+            StyleValue::Length(offset_x as f32),
+        ))
+        .style(StyleProperty(
+            Axis::OffsetY,
+            StyleValue::Length(offset_y as f32),
+        ))
     }
 
     /// Paint order among `Overlay` siblings (higher draws on top). No-op
@@ -293,13 +362,25 @@ impl Component {
 
     fn with_handler(self, attach: RawAttach, callback: impl Fn(Event) + 'static) -> Self {
         match self {
-            Component::WithHandlers { component, mut handlers } => {
-                handlers.push(Handler { attach, callback: Rc::new(callback) });
-                Component::WithHandlers { component, handlers }
+            Component::WithHandlers {
+                component,
+                mut handlers,
+            } => {
+                handlers.push(Handler {
+                    attach,
+                    callback: Rc::new(callback),
+                });
+                Component::WithHandlers {
+                    component,
+                    handlers,
+                }
             }
             other => Component::WithHandlers {
                 component: Box::new(other),
-                handlers: vec![Handler { attach, callback: Rc::new(callback) }],
+                handlers: vec![Handler {
+                    attach,
+                    callback: Rc::new(callback),
+                }],
             },
         }
     }
@@ -367,7 +448,8 @@ type RawAttach = fn(*mut (), *const (), Rc<dyn Fn(Event)>);
 fn attach_click(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
     unsafe {
         let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
-        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        let view = &*(view_ptr
+            as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
         crate::platform::active_listeners::on_click::attach(backend, view, callback);
     }
 }
@@ -375,7 +457,8 @@ fn attach_click(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(E
 fn attach_long_click(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
     unsafe {
         let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
-        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        let view = &*(view_ptr
+            as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
         crate::platform::active_listeners::on_long_click::attach(backend, view, callback);
     }
 }
@@ -383,7 +466,8 @@ fn attach_long_click(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn
 fn attach_checked_change(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
     unsafe {
         let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
-        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        let view = &*(view_ptr
+            as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
         crate::platform::active_listeners::on_checked_change::attach(backend, view, callback);
     }
 }
@@ -391,7 +475,8 @@ fn attach_checked_change(backend_ptr: *mut (), view_ptr: *const (), callback: Rc
 fn attach_text_watcher(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
     unsafe {
         let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
-        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        let view = &*(view_ptr
+            as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
         crate::platform::active_listeners::on_text_watcher::attach(backend, view, callback);
     }
 }
@@ -399,7 +484,8 @@ fn attach_text_watcher(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<d
 fn attach_focus_change(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
     unsafe {
         let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
-        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        let view = &*(view_ptr
+            as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
         crate::platform::active_listeners::on_focus_change::attach(backend, view, callback);
     }
 }
@@ -407,7 +493,8 @@ fn attach_focus_change(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<d
 fn attach_seek(backend_ptr: *mut (), view_ptr: *const (), callback: Rc<dyn Fn(Event)>) {
     unsafe {
         let backend = &mut *(backend_ptr as *mut crate::platform::ActiveBackend);
-        let view = &*(view_ptr as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
+        let view = &*(view_ptr
+            as *const <crate::platform::ActiveBackend as crate::core::Backend>::PlatformView);
         crate::platform::active_listeners::on_seek::attach(backend, view, callback);
     }
 }
@@ -434,14 +521,14 @@ impl Component {
                 reactive(backend, &view, text_comp.compute.clone(), Update::SetText);
                 view
             }
-            Component::Button(btn_comp) => {
-                backend.create_button(&btn_comp.text)
-            }
-            Component::Image(img_comp) => {
-                backend.create_image(&img_comp.asset)
-            }
+            Component::Button(btn_comp) => backend.create_button(&btn_comp.text),
+            Component::Image(img_comp) => backend.create_image(&img_comp.asset),
             Component::Stack(stack_comp) => {
-                let views = stack_comp.children.iter().map(|c| c.render(backend)).collect();
+                let views = stack_comp
+                    .children
+                    .iter()
+                    .map(|c| c.render(backend))
+                    .collect();
                 backend.create_stack(stack_comp.direction, stack_comp.spacing, views)
             }
             Component::TextInput(input_comp) => {
@@ -450,41 +537,53 @@ impl Component {
             Component::Checkbox(checkbox_comp) => {
                 backend.create_checkbox(&checkbox_comp.label, checkbox_comp.checked)
             }
-            Component::Switch(switch_comp) => {
-                backend.create_switch(switch_comp.checked)
-            }
+            Component::Switch(switch_comp) => backend.create_switch(switch_comp.checked),
             Component::Progress(progress_comp) => {
                 let view = backend.create_progress((progress_comp.compute)());
-                reactive(backend, &view, progress_comp.compute.clone(), Update::SetProgress);
+                reactive(
+                    backend,
+                    &view,
+                    progress_comp.compute.clone(),
+                    Update::SetProgress,
+                );
                 view
             }
-            Component::Spacer(spacer_comp) => {
-                backend.create_spacer(spacer_comp.size)
-            }
-            Component::Divider(_) => {
-                backend.create_divider()
-            }
+            Component::Spacer(spacer_comp) => backend.create_spacer(spacer_comp.size),
+            Component::Divider(_) => backend.create_divider(),
             Component::ScrollView(scroll_comp) => {
-                let views = scroll_comp.children.iter().map(|c| c.render(backend)).collect();
+                let views = scroll_comp
+                    .children
+                    .iter()
+                    .map(|c| c.render(backend))
+                    .collect();
                 backend.create_scroll_view(scroll_comp.direction, scroll_comp.spacing, views)
             }
             Component::Textarea(textarea_comp) => {
                 backend.create_textarea(&textarea_comp.placeholder, &textarea_comp.initial_text)
             }
-            Component::RadioButton(radio_comp) => {
-                backend.create_radio_button(&radio_comp.group, &radio_comp.label, radio_comp.selected)
-            }
+            Component::RadioButton(radio_comp) => backend.create_radio_button(
+                &radio_comp.group,
+                &radio_comp.label,
+                radio_comp.selected,
+            ),
             Component::Overlay(overlay_comp) => {
-                let views = overlay_comp.children.iter().map(|c| c.render(backend)).collect();
+                let views = overlay_comp
+                    .children
+                    .iter()
+                    .map(|c| c.render(backend))
+                    .collect();
                 backend.create_overlay(views)
             }
-            Component::WithHandlers { component, handlers } => {
+            Component::WithHandlers {
+                component,
+                handlers,
+            } => {
                 let view = component.render(backend);
                 for handler in handlers {
                     (handler.attach)(
                         backend as *mut B as *mut (),
                         &view as *const B::PlatformView as *const (),
-                        handler.callback.clone()
+                        handler.callback.clone(),
                     );
                 }
                 view

@@ -7,6 +7,8 @@ pub struct Text {
 
 impl Text {
     pub fn new(compute: impl Fn() -> String + 'static) -> Component {
-        Component::Text(Self { compute: Rc::new(compute) })
+        Component::Text(Self {
+            compute: Rc::new(compute),
+        })
     }
 }

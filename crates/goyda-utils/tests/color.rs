@@ -26,9 +26,18 @@ fn argb_custom_passes_the_hex_value_through_unchanged() {
 
 #[test]
 fn css_rgba_decodes_argb_channels_and_normalizes_alpha() {
-    assert_eq!(css_rgba(Color::Custom(0xFF112233)), "rgba(17, 34, 51, 1.000)");
-    assert_eq!(css_rgba(Color::Custom(0x00112233)), "rgba(17, 34, 51, 0.000)");
-    assert_eq!(css_rgba(Color::Custom(0x80112233)), "rgba(17, 34, 51, 0.502)");
+    assert_eq!(
+        css_rgba(Color::Custom(0xFF112233)),
+        "rgba(17, 34, 51, 1.000)"
+    );
+    assert_eq!(
+        css_rgba(Color::Custom(0x00112233)),
+        "rgba(17, 34, 51, 0.000)"
+    );
+    assert_eq!(
+        css_rgba(Color::Custom(0x80112233)),
+        "rgba(17, 34, 51, 0.502)"
+    );
 }
 
 #[test]

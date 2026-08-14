@@ -5,8 +5,8 @@
 //! own executable), so there's no cross-file interference. Every assertion
 //! here still lives in one `#[test]` to avoid interleaving with itself.
 
-use goyda::prelude::*;
 use goyda::Color;
+use goyda::prelude::*;
 
 theme! {
     Light, Dark, Solarized;

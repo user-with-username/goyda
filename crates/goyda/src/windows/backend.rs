@@ -1,5 +1,8 @@
 use windows_sys::Win32::Foundation::{HINSTANCE, HWND, WPARAM};
-use windows_sys::Win32::Graphics::Gdi::{GetDC, GetTextExtentPoint32W, InvalidateRect, ReleaseDC, SelectObject, SetTextCharacterExtra, HFONT};
+use windows_sys::Win32::Graphics::Gdi::{
+    GetDC, GetTextExtentPoint32W, HFONT, InvalidateRect, ReleaseDC, SelectObject,
+    SetTextCharacterExtra,
+};
 use windows_sys::Win32::UI::Input::KeyboardAndMouse::{ReleaseCapture, SetCapture, SetFocus};
 use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
@@ -13,7 +16,12 @@ use super::layout;
 use super::state::{self, ControlKind, ControlState, Edges};
 
 const DEFAULT_FONT_SIZE: i32 = 16;
-const BUTTON_PADDING: Edges = Edges { left: 16, top: 10, right: 16, bottom: 10 };
+const BUTTON_PADDING: Edges = Edges {
+    left: 16,
+    top: 10,
+    right: 16,
+    bottom: 10,
+};
 
 fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
@@ -88,22 +96,43 @@ const DIVIDER_THICKNESS: i32 = 1;
 fn measure_text_for(hwnd: HWND) -> (i32, i32) {
     state::with_state(hwnd, |s| {
         let is_button = matches!(s.kind, ControlKind::Button(_));
-        let multiline = matches!(s.kind, ControlKind::TextInput { multiline: true, .. });
+        let multiline = matches!(
+            s.kind,
+            ControlKind::TextInput {
+                multiline: true,
+                ..
+            }
+        );
         let is_input = matches!(s.kind, ControlKind::TextInput { .. });
         let text = match &s.kind {
             ControlKind::Text(t) | ControlKind::Button(t) => t.clone(),
-            ControlKind::TextInput { text, placeholder, .. } => {
-                if text.is_empty() { placeholder.clone() } else { text.clone() }
+            ControlKind::TextInput {
+                text, placeholder, ..
+            } => {
+                if text.is_empty() {
+                    placeholder.clone()
+                } else {
+                    text.clone()
+                }
             }
             _ => return (0, 0),
         };
-        let f = s.font.unwrap_or_else(|| font::default_font(DEFAULT_FONT_SIZE));
+        let f = s
+            .font
+            .unwrap_or_else(|| font::default_font(DEFAULT_FONT_SIZE));
         let (w, h) = measure_text_with_spacing(&text, f, s.letter_spacing);
-        let pad = if is_button { &BUTTON_PADDING } else { &s.padding };
+        let pad = if is_button {
+            &BUTTON_PADDING
+        } else {
+            &s.padding
+        };
         let total_w = w + pad.left + pad.right;
         let total_h = h + pad.top + pad.bottom;
         if multiline {
-            (total_w.max(TEXTAREA_MIN_WIDTH), total_h.max(TEXTAREA_MIN_HEIGHT))
+            (
+                total_w.max(TEXTAREA_MIN_WIDTH),
+                total_h.max(TEXTAREA_MIN_HEIGHT),
+            )
         } else if is_input {
             (total_w.max(TEXT_INPUT_MIN_WIDTH), total_h.max(24))
         } else {
@@ -120,11 +149,14 @@ fn invalidate(hwnd: HWND) {
 }
 
 fn register_click_to_toggle(hwnd: HWND) {
-    state::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, _wparam, _lparam| {
-        if msg == WM_LBUTTONUP {
-            crate::windows::toggle_checked(hwnd);
-        }
-    }));
+    state::register_raw_hook(
+        hwnd,
+        std::rc::Rc::new(move |msg, _wparam, _lparam| {
+            if msg == WM_LBUTTONUP {
+                crate::windows::toggle_checked(hwnd);
+            }
+        }),
+    );
 }
 
 /// The Windows rendering backend, mounting components as native `HWND`
@@ -172,7 +204,13 @@ impl WindowsBackend {
         WindowsView { hwnd }
     }
 
-    fn build_stack_control(&mut self, kind: ControlKind, direction: LayoutDirection, spacing: i32, children: Vec<WindowsView>) -> WindowsView {
+    fn build_stack_control(
+        &mut self,
+        kind: ControlKind,
+        direction: LayoutDirection,
+        spacing: i32,
+        children: Vec<WindowsView>,
+    ) -> WindowsView {
         let panel = self.create_control(kind);
 
         for child in &children {
@@ -181,12 +219,23 @@ impl WindowsBackend {
             }
         }
 
-        let sizes: Vec<(i32, i32)> = children.iter().map(|c| state::natural_size(c.hwnd)).collect();
+        let sizes: Vec<(i32, i32)> = children
+            .iter()
+            .map(|c| state::natural_size(c.hwnd))
+            .collect();
         let mut total_main = 0i32;
         let mut cross_max = 0i32;
         for (i, (w, h)) in sizes.iter().enumerate() {
-            let main = if matches!(direction, LayoutDirection::Horizontal) { *w } else { *h };
-            let cross = if matches!(direction, LayoutDirection::Horizontal) { *h } else { *w };
+            let main = if matches!(direction, LayoutDirection::Horizontal) {
+                *w
+            } else {
+                *h
+            };
+            let cross = if matches!(direction, LayoutDirection::Horizontal) {
+                *h
+            } else {
+                *w
+            };
             total_main += main + if i > 0 { spacing } else { 0 };
             cross_max = cross_max.max(cross);
         }
@@ -206,15 +255,29 @@ impl WindowsBackend {
         panel
     }
 
-    fn build_text_input(&mut self, placeholder: &str, initial_text: &str, multiline: bool) -> WindowsView {
-        let view = self.create_control(ControlKind::TextInput { text: initial_text.to_string(), placeholder: placeholder.to_string(), multiline });
+    fn build_text_input(
+        &mut self,
+        placeholder: &str,
+        initial_text: &str,
+        multiline: bool,
+    ) -> WindowsView {
+        let view = self.create_control(ControlKind::TextInput {
+            text: initial_text.to_string(),
+            placeholder: placeholder.to_string(),
+            multiline,
+        });
         state::with_state(view.hwnd, |s| {
             s.text_buffer = initial_text.to_string();
             s.background_color = Some(state::to_colorref(0xFFFFFFFF));
             s.border_color = Some(state::to_colorref(0xFF969696));
             s.border_width = 1;
             s.border_radius = 2;
-            s.padding = Edges { left: 8, top: 4, right: 8, bottom: 4 };
+            s.padding = Edges {
+                left: 8,
+                top: 4,
+                right: 8,
+                bottom: 4,
+            };
         });
         let (w, h) = measure_text_for(view.hwnd);
         state::with_state(view.hwnd, |s| s.natural_size = (w, h));
@@ -229,25 +292,28 @@ impl WindowsBackend {
         // `.on_text_changed(...)`, which only needs to *observe* this, not
         // drive it (see `crate::listeners`'s `text_watcher` arm).
         let hwnd = view.hwnd;
-        state::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, wparam, _lparam| unsafe {
-            match msg {
-                WM_LBUTTONDOWN => {
-                    SetFocus(hwnd);
-                }
-                WM_CHAR => {
-                    if wparam == 0x08 {
-                        crate::windows::backspace_text_buffer(hwnd);
-                    } else if multiline && (wparam == 0x0D || wparam == 0x0A) {
-                        crate::windows::append_text_buffer(hwnd, '\n');
-                    } else if let Some(ch) = char::from_u32(wparam as u32) {
-                        if !ch.is_control() {
-                            crate::windows::append_text_buffer(hwnd, ch);
+        state::register_raw_hook(
+            hwnd,
+            std::rc::Rc::new(move |msg, wparam, _lparam| unsafe {
+                match msg {
+                    WM_LBUTTONDOWN => {
+                        SetFocus(hwnd);
+                    }
+                    WM_CHAR => {
+                        if wparam == 0x08 {
+                            crate::windows::backspace_text_buffer(hwnd);
+                        } else if multiline && (wparam == 0x0D || wparam == 0x0A) {
+                            crate::windows::append_text_buffer(hwnd, '\n');
+                        } else if let Some(ch) = char::from_u32(wparam as u32) {
+                            if !ch.is_control() {
+                                crate::windows::append_text_buffer(hwnd, ch);
+                            }
                         }
                     }
+                    _ => {}
                 }
-                _ => {}
-            }
-        }));
+            }),
+        );
 
         view
     }
@@ -281,8 +347,22 @@ impl Backend for WindowsBackend {
 
     fn create_image(&mut self, asset: &Asset) -> Self::PlatformView {
         let (kind, size) = match decode_to_bitmap(asset) {
-            Some((bmp, w, h)) => (ControlKind::Image { bitmap: Some(bmp), width: w, height: h }, (w, h)),
-            None => (ControlKind::Image { bitmap: None, width: 0, height: 0 }, (0, 0)),
+            Some((bmp, w, h)) => (
+                ControlKind::Image {
+                    bitmap: Some(bmp),
+                    width: w,
+                    height: h,
+                },
+                (w, h),
+            ),
+            None => (
+                ControlKind::Image {
+                    bitmap: None,
+                    width: 0,
+                    height: 0,
+                },
+                (0, 0),
+            ),
         };
         let view = self.create_control(kind);
         state::with_state(view.hwnd, |s| s.natural_size = size);
@@ -298,9 +378,15 @@ impl Backend for WindowsBackend {
     }
 
     fn create_checkbox(&mut self, label: &str, checked: bool) -> Self::PlatformView {
-        let view = self.create_control(ControlKind::Checkbox { label: label.to_string() });
+        let view = self.create_control(ControlKind::Checkbox {
+            label: label.to_string(),
+        });
         let font = font::default_font(DEFAULT_FONT_SIZE);
-        let (label_w, label_h) = if label.is_empty() { (0, 0) } else { measure_text(label, font) };
+        let (label_w, label_h) = if label.is_empty() {
+            (0, 0)
+        } else {
+            measure_text(label, font)
+        };
         let gap = if label.is_empty() { 0 } else { 8 };
         let w = CHECKBOX_BOX_SIZE + gap + label_w;
         let h = CHECKBOX_BOX_SIZE.max(label_h);
@@ -312,10 +398,21 @@ impl Backend for WindowsBackend {
         view
     }
 
-    fn create_radio_button(&mut self, group: &str, label: &str, selected: bool) -> Self::PlatformView {
-        let view = self.create_control(ControlKind::RadioButton { label: label.to_string() });
+    fn create_radio_button(
+        &mut self,
+        group: &str,
+        label: &str,
+        selected: bool,
+    ) -> Self::PlatformView {
+        let view = self.create_control(ControlKind::RadioButton {
+            label: label.to_string(),
+        });
         let font = font::default_font(DEFAULT_FONT_SIZE);
-        let (label_w, label_h) = if label.is_empty() { (0, 0) } else { measure_text(label, font) };
+        let (label_w, label_h) = if label.is_empty() {
+            (0, 0)
+        } else {
+            measure_text(label, font)
+        };
         let gap = if label.is_empty() { 0 } else { 8 };
         let w = CHECKBOX_BOX_SIZE + gap + label_w;
         let h = CHECKBOX_BOX_SIZE.max(label_h);
@@ -331,11 +428,14 @@ impl Backend for WindowsBackend {
 
         let hwnd = view.hwnd;
         let group_owned = group.to_string();
-        state::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, _wparam, _lparam| {
-            if msg == WM_LBUTTONUP {
-                crate::windows::select_radio(hwnd, &group_owned);
-            }
-        }));
+        state::register_raw_hook(
+            hwnd,
+            std::rc::Rc::new(move |msg, _wparam, _lparam| {
+                if msg == WM_LBUTTONUP {
+                    crate::windows::select_radio(hwnd, &group_owned);
+                }
+            }),
+        );
 
         view
     }
@@ -351,7 +451,9 @@ impl Backend for WindowsBackend {
     }
 
     fn create_progress(&mut self, value: f32) -> Self::PlatformView {
-        let view = self.create_control(ControlKind::Progress { value: value.clamp(0.0, 1.0) });
+        let view = self.create_control(ControlKind::Progress {
+            value: value.clamp(0.0, 1.0),
+        });
         state::with_state(view.hwnd, |s| {
             s.natural_size = (PROGRESS_DEFAULT_WIDTH, PROGRESS_HEIGHT);
             s.border_radius = PROGRESS_HEIGHT / 2;
@@ -367,21 +469,24 @@ impl Backend for WindowsBackend {
         // button is actually held (`MK_LBUTTON`).
         const MK_LBUTTON: WPARAM = 0x0001;
         let hwnd = view.hwnd;
-        state::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, wparam, lparam| unsafe {
-            match msg {
-                WM_LBUTTONDOWN => {
-                    SetCapture(hwnd);
-                    crate::windows::set_progress_from_x(hwnd, (lparam & 0xFFFF) as i16 as i32);
+        state::register_raw_hook(
+            hwnd,
+            std::rc::Rc::new(move |msg, wparam, lparam| unsafe {
+                match msg {
+                    WM_LBUTTONDOWN => {
+                        SetCapture(hwnd);
+                        crate::windows::set_progress_from_x(hwnd, (lparam & 0xFFFF) as i16 as i32);
+                    }
+                    WM_MOUSEMOVE if wparam & MK_LBUTTON != 0 => {
+                        crate::windows::set_progress_from_x(hwnd, (lparam & 0xFFFF) as i16 as i32);
+                    }
+                    WM_LBUTTONUP => {
+                        ReleaseCapture();
+                    }
+                    _ => {}
                 }
-                WM_MOUSEMOVE if wparam & MK_LBUTTON != 0 => {
-                    crate::windows::set_progress_from_x(hwnd, (lparam & 0xFFFF) as i16 as i32);
-                }
-                WM_LBUTTONUP => {
-                    ReleaseCapture();
-                }
-                _ => {}
-            }
-        }));
+            }),
+        );
 
         view
     }
@@ -401,18 +506,36 @@ impl Backend for WindowsBackend {
         view
     }
 
-    fn create_stack(&mut self, direction: LayoutDirection, spacing: i32, children: Vec<Self::PlatformView>) -> Self::PlatformView {
+    fn create_stack(
+        &mut self,
+        direction: LayoutDirection,
+        spacing: i32,
+        children: Vec<Self::PlatformView>,
+    ) -> Self::PlatformView {
         self.build_stack_control(
-            ControlKind::Panel { direction, spacing, children: children.iter().map(|c| c.hwnd).collect() },
+            ControlKind::Panel {
+                direction,
+                spacing,
+                children: children.iter().map(|c| c.hwnd).collect(),
+            },
             direction,
             spacing,
             children,
         )
     }
 
-    fn create_scroll_view(&mut self, direction: LayoutDirection, spacing: i32, children: Vec<Self::PlatformView>) -> Self::PlatformView {
+    fn create_scroll_view(
+        &mut self,
+        direction: LayoutDirection,
+        spacing: i32,
+        children: Vec<Self::PlatformView>,
+    ) -> Self::PlatformView {
         let view = self.build_stack_control(
-            ControlKind::ScrollView { direction, spacing, children: children.iter().map(|c| c.hwnd).collect() },
+            ControlKind::ScrollView {
+                direction,
+                spacing,
+                children: children.iter().map(|c| c.hwnd).collect(),
+            },
             direction,
             spacing,
             children,
@@ -426,18 +549,23 @@ impl Backend for WindowsBackend {
         // this control's own bounds are clipped for free, the same way any
         // child window is always clipped to its parent's client area.
         let hwnd = view.hwnd;
-        state::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, wparam, _lparam| {
-            if msg == WM_MOUSEWHEEL {
-                let notches = ((wparam >> 16) as i16 as i32) / WHEEL_DELTA as i32;
-                crate::windows::scroll_by(hwnd, -notches * 40);
-            }
-        }));
+        state::register_raw_hook(
+            hwnd,
+            std::rc::Rc::new(move |msg, wparam, _lparam| {
+                if msg == WM_MOUSEWHEEL {
+                    let notches = ((wparam >> 16) as i16 as i32) / WHEEL_DELTA as i32;
+                    crate::windows::scroll_by(hwnd, -notches * 40);
+                }
+            }),
+        );
 
         view
     }
 
     fn create_overlay(&mut self, children: Vec<Self::PlatformView>) -> Self::PlatformView {
-        let overlay = self.create_control(ControlKind::Overlay { children: children.iter().map(|c| c.hwnd).collect() });
+        let overlay = self.create_control(ControlKind::Overlay {
+            children: children.iter().map(|c| c.hwnd).collect(),
+        });
 
         for child in &children {
             unsafe {
@@ -485,9 +613,15 @@ impl Backend for WindowsBackend {
         let hwnd = view.hwnd;
 
         state::with_state(hwnd, |s| match (&axis, &value) {
-            (Axis::TextColor, StyleValue::Color(c)) => s.text_color = Some(state::to_colorref(goyda_utils::color::argb(*c))),
-            (Axis::BackgroundColor, StyleValue::Color(c)) => s.background_color = Some(state::to_colorref(goyda_utils::color::argb(*c))),
-            (Axis::BorderColor, StyleValue::Color(c)) => s.border_color = Some(state::to_colorref(goyda_utils::color::argb(*c))),
+            (Axis::TextColor, StyleValue::Color(c)) => {
+                s.text_color = Some(state::to_colorref(goyda_utils::color::argb(*c)))
+            }
+            (Axis::BackgroundColor, StyleValue::Color(c)) => {
+                s.background_color = Some(state::to_colorref(goyda_utils::color::argb(*c)))
+            }
+            (Axis::BorderColor, StyleValue::Color(c)) => {
+                s.border_color = Some(state::to_colorref(goyda_utils::color::argb(*c)))
+            }
             (Axis::BorderWidth, v) => {
                 if let Some(len) = goyda_utils::style::resolve_length(v) {
                     s.border_width = len as i32;
@@ -514,7 +648,13 @@ impl Backend for WindowsBackend {
             (Axis::FontSize, v) => {
                 if let Some(len) = goyda_utils::style::resolve_length(v) {
                     s.font_size = len as i32;
-                    s.font = Some(font::styled_font(s.font_size, s.bold, s.italic, s.underline, s.strikethrough));
+                    s.font = Some(font::styled_font(
+                        s.font_size,
+                        s.bold,
+                        s.italic,
+                        s.underline,
+                        s.strikethrough,
+                    ));
                 }
             }
             // `.bold()`/`.italic()`/`.underline()`/`.strikethrough()`
@@ -526,19 +666,43 @@ impl Backend for WindowsBackend {
             // limitation, not a bug.
             (Axis::FontWeight, StyleValue::Bool(bold)) => {
                 s.bold = *bold;
-                s.font = Some(font::styled_font(s.font_size, s.bold, s.italic, s.underline, s.strikethrough));
+                s.font = Some(font::styled_font(
+                    s.font_size,
+                    s.bold,
+                    s.italic,
+                    s.underline,
+                    s.strikethrough,
+                ));
             }
             (Axis::FontStyle, StyleValue::Bool(italic)) => {
                 s.italic = *italic;
-                s.font = Some(font::styled_font(s.font_size, s.bold, s.italic, s.underline, s.strikethrough));
+                s.font = Some(font::styled_font(
+                    s.font_size,
+                    s.bold,
+                    s.italic,
+                    s.underline,
+                    s.strikethrough,
+                ));
             }
             (Axis::Underline, StyleValue::Bool(underline)) => {
                 s.underline = *underline;
-                s.font = Some(font::styled_font(s.font_size, s.bold, s.italic, s.underline, s.strikethrough));
+                s.font = Some(font::styled_font(
+                    s.font_size,
+                    s.bold,
+                    s.italic,
+                    s.underline,
+                    s.strikethrough,
+                ));
             }
             (Axis::Strikethrough, StyleValue::Bool(strikethrough)) => {
                 s.strikethrough = *strikethrough;
-                s.font = Some(font::styled_font(s.font_size, s.bold, s.italic, s.underline, s.strikethrough));
+                s.font = Some(font::styled_font(
+                    s.font_size,
+                    s.bold,
+                    s.italic,
+                    s.underline,
+                    s.strikethrough,
+                ));
             }
             (Axis::TextAlign, StyleValue::Align(a)) => s.text_align = *a,
             (Axis::Width, v) => {
@@ -590,7 +754,10 @@ impl Backend for WindowsBackend {
                         s.font = Some(f);
                     }
                 } else if let Ok(bytes) = std::fs::read(
-                    std::env::current_exe().ok().and_then(|p| p.parent().map(|p| p.join("assets").join(asset.path()))).unwrap_or_default(),
+                    std::env::current_exe()
+                        .ok()
+                        .and_then(|p| p.parent().map(|p| p.join("assets").join(asset.path())))
+                        .unwrap_or_default(),
                 ) {
                     if let Some(f) = font::font_from_bytes(&bytes, size) {
                         s.font = Some(f);
@@ -610,7 +777,14 @@ impl Backend for WindowsBackend {
             _ => {}
         });
 
-        if matches!(axis, Axis::Padding(_) | Axis::FontSize | Axis::FontWeight | Axis::FontStyle | Axis::LetterSpacing) {
+        if matches!(
+            axis,
+            Axis::Padding(_)
+                | Axis::FontSize
+                | Axis::FontWeight
+                | Axis::FontStyle
+                | Axis::LetterSpacing
+        ) {
             let (w, h) = measure_text_for(hwnd);
             if w > 0 || h > 0 {
                 state::with_state(hwnd, |s| s.natural_size = (w, h));
@@ -620,7 +794,15 @@ impl Backend for WindowsBackend {
         if matches!(axis, Axis::Width | Axis::Height) {
             let (w, h) = state::natural_size(hwnd);
             unsafe {
-                SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0, w.max(0), h.max(0), SWP_NOMOVE | SWP_NOZORDER);
+                SetWindowPos(
+                    hwnd,
+                    std::ptr::null_mut(),
+                    0,
+                    0,
+                    w.max(0),
+                    h.max(0),
+                    SWP_NOMOVE | SWP_NOZORDER,
+                );
             }
         }
 
@@ -664,4 +846,3 @@ fn apply_edge(edges: &mut Edges, edge: Edge, v: i32) {
         Edge::Left => edges.left = v,
     }
 }
-

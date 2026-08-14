@@ -1,7 +1,7 @@
 //! Tests for `src/components/scroll_view.rs`.
 
-use goyda::{Component, LayoutDirection};
 use goyda::components::ScrollView;
+use goyda::{Component, LayoutDirection};
 
 #[test]
 fn new_sets_direction_spacing_and_children() {

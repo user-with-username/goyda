@@ -12,14 +12,25 @@ fn wide(s: &str) -> Vec<u16> {
     s.encode_utf16().chain(std::iter::once(0)).collect()
 }
 
-fn create_font(height: i32, face: &str, bold: bool, italic: bool, underline: bool, strikethrough: bool) -> HFONT {
+fn create_font(
+    height: i32,
+    face: &str,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+    strikethrough: bool,
+) -> HFONT {
     unsafe {
         CreateFontW(
             -height,
             0,
             0,
             0,
-            if bold { FW_BOLD as i32 } else { FW_NORMAL as i32 },
+            if bold {
+                FW_BOLD as i32
+            } else {
+                FW_NORMAL as i32
+            },
             italic as u32,
             underline as u32,
             strikethrough as u32,
@@ -37,12 +48,20 @@ pub fn default_font(size_px: i32) -> HFONT {
     styled_font(size_px, false, false, false, false)
 }
 
-pub fn styled_font(size_px: i32, bold: bool, italic: bool, underline: bool, strikethrough: bool) -> HFONT {
+pub fn styled_font(
+    size_px: i32,
+    bold: bool,
+    italic: bool,
+    underline: bool,
+    strikethrough: bool,
+) -> HFONT {
     DEFAULT_FONTS.with(|cache| {
         *cache
             .borrow_mut()
             .entry((size_px, bold, italic, underline, strikethrough))
-            .or_insert_with(|| create_font(size_px, "Segoe UI", bold, italic, underline, strikethrough))
+            .or_insert_with(|| {
+                create_font(size_px, "Segoe UI", bold, italic, underline, strikethrough)
+            })
     })
 }
 
@@ -55,7 +74,12 @@ pub fn font_from_bytes(bytes: &[u8], size_px: i32) -> Option<HFONT> {
 
     unsafe {
         let mut installed = 0u32;
-        let handle = AddFontMemResourceEx(bytes.as_ptr() as *const _, bytes.len() as u32, std::ptr::null(), &mut installed);
+        let handle = AddFontMemResourceEx(
+            bytes.as_ptr() as *const _,
+            bytes.len() as u32,
+            std::ptr::null(),
+            &mut installed,
+        );
         if handle.is_null() {
             return None;
         }
@@ -67,9 +91,15 @@ pub fn font_from_bytes(bytes: &[u8], size_px: i32) -> Option<HFONT> {
 }
 
 fn parse_family_name(data: &[u8]) -> Option<String> {
-    let u16_at = |o: usize| -> Option<u16> { Some(u16::from_be_bytes([*data.get(o)?, *data.get(o + 1)?])) };
+    let u16_at =
+        |o: usize| -> Option<u16> { Some(u16::from_be_bytes([*data.get(o)?, *data.get(o + 1)?])) };
     let u32_at = |o: usize| -> Option<u32> {
-        Some(u32::from_be_bytes([*data.get(o)?, *data.get(o + 1)?, *data.get(o + 2)?, *data.get(o + 3)?]))
+        Some(u32::from_be_bytes([
+            *data.get(o)?,
+            *data.get(o + 1)?,
+            *data.get(o + 2)?,
+            *data.get(o + 3)?,
+        ]))
     };
 
     let num_tables = u16_at(4)? as usize;
@@ -101,7 +131,10 @@ fn parse_family_name(data: &[u8]) -> Option<String> {
 
         let start = table + string_offset + offset;
         let raw = data.get(start..start + length)?;
-        let units: Vec<u16> = raw.chunks_exact(2).map(|c| u16::from_be_bytes([c[0], c[1]])).collect();
+        let units: Vec<u16> = raw
+            .chunks_exact(2)
+            .map(|c| u16::from_be_bytes([c[0], c[1]]))
+            .collect();
         if let Ok(name) = String::from_utf16(&units) {
             return Some(name);
         }

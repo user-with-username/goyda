@@ -588,6 +588,26 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "0cc23270f6e1808e30a928bdc84dea0b9b4136a8bc82338574f23baf47bbd280"
 
 [[package]]
+name = "goy"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "cargo_metadata",
+ "cargo_toml",
+ "clap",
+ "colored",
+ "crossterm",
+ "dirs",
+ "dunce",
+ "goyda",
+ "inventory",
+ "ureq",
+ "which",
+ "windows-sys 0.61.2",
+ "zip",
+]
+
+[[package]]
 name = "goyda"
 version = "0.1.0"
 dependencies = [
@@ -607,26 +627,6 @@ dependencies = [
  "wasm-bindgen",
  "web-sys",
  "windows-sys 0.61.2",
-]
-
-[[package]]
-name = "goyda-cli"
-version = "0.1.0"
-dependencies = [
- "anyhow",
- "cargo_metadata",
- "cargo_toml",
- "clap",
- "colored",
- "crossterm",
- "dirs",
- "dunce",
- "goyda",
- "inventory",
- "ureq",
- "which",
- "windows-sys 0.61.2",
- "zip",
 ]
 
 [[package]]

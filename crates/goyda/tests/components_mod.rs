@@ -1,9 +1,9 @@
 //! Tests for `src/components/mod.rs`: `Component`'s constructors, style
 //! builder methods, and `render` dispatch.
 
-use goyda::{Axis, Color, Component, Edge, LayoutDirection, StyleValue};
 use goyda::components::Align;
 use goyda::core::events::Event;
+use goyda::{Axis, Color, Component, Edge, LayoutDirection, StyleValue};
 
 fn last_style(component: &Component) -> &goyda::StyleProperty {
     match component {
@@ -27,7 +27,10 @@ fn style_wraps_plain_component_once() {
 fn style_appends_to_an_already_styled_component_instead_of_nesting() {
     let styled = Component::text(|| "x".into())
         .style(goyda::StyleProperty(Axis::Opacity, StyleValue::Number(0.5)))
-        .style(goyda::StyleProperty(Axis::FontSize, StyleValue::Length(10.0)));
+        .style(goyda::StyleProperty(
+            Axis::FontSize,
+            StyleValue::Length(10.0),
+        ));
 
     match styled {
         Component::Styled { component, styles } => {
@@ -135,11 +138,17 @@ fn bold_and_italic_set_bool_true() {
 fn align_and_justify_set_align_value() {
     let a = Component::text(|| "x".into()).align(Align::Stretch);
     assert!(matches!(last_style(&a).0, Axis::AlignItems));
-    assert!(matches!(last_style(&a).1, StyleValue::Align(Align::Stretch)));
+    assert!(matches!(
+        last_style(&a).1,
+        StyleValue::Align(Align::Stretch)
+    ));
 
     let j = Component::text(|| "x".into()).justify(Align::SpaceBetween);
     assert!(matches!(last_style(&j).0, Axis::JustifyContent));
-    assert!(matches!(last_style(&j).1, StyleValue::Align(Align::SpaceBetween)));
+    assert!(matches!(
+        last_style(&j).1,
+        StyleValue::Align(Align::SpaceBetween)
+    ));
 }
 
 #[test]
@@ -163,7 +172,12 @@ fn underline_strikethrough_ellipsis_clip_set_bool_true() {
     assert!(matches!(last_style(&e).0, Axis::TextOverflowEllipsis));
     let c = Component::text(|| "x".into()).clip();
     assert!(matches!(last_style(&c).0, Axis::Clip));
-    for prop in [last_style(&u), last_style(&s), last_style(&e), last_style(&c)] {
+    for prop in [
+        last_style(&u),
+        last_style(&s),
+        last_style(&e),
+        last_style(&c),
+    ] {
         assert!(matches!(prop.1, StyleValue::Bool(true)));
     }
 }
@@ -210,7 +224,10 @@ fn on_click_wraps_in_with_handlers_without_running_it() {
     match c {
         Component::WithHandlers { handlers, .. } => {
             assert_eq!(handlers.len(), 1);
-            assert!(!ran.get(), "constructing the component must not invoke the handler");
+            assert!(
+                !ran.get(),
+                "constructing the component must not invoke the handler"
+            );
             (handlers[0].callback)(Event::Click);
             assert!(ran.get());
         }
@@ -234,7 +251,8 @@ fn on_checked_change_only_fires_for_checked_changed_events() {
 
     let seen: Rc<Cell<Option<bool>>> = Rc::new(Cell::new(None));
     let seen_clone = seen.clone();
-    let c = Component::checkbox("x", false).on_checked_change(move |checked| seen_clone.set(Some(checked)));
+    let c = Component::checkbox("x", false)
+        .on_checked_change(move |checked| seen_clone.set(Some(checked)));
 
     match c {
         Component::WithHandlers { handlers, .. } => {
@@ -258,7 +276,12 @@ fn on_text_changed_extracts_text_from_text_changed_event() {
 
     match c {
         Component::WithHandlers { handlers, .. } => {
-            (handlers[0].callback)(Event::TextChanged { text: "hi".into(), start: 0, before: 0, count: 2 });
+            (handlers[0].callback)(Event::TextChanged {
+                text: "hi".into(),
+                start: 0,
+                before: 0,
+                count: 2,
+            });
             assert_eq!(&*seen.borrow(), "hi");
         }
         _ => panic!("expected Component::WithHandlers"),
@@ -309,9 +332,9 @@ fn on_value_changed_extracts_f32_from_value_changed_event() {
 // would be unsound to trigger against this mock.
 
 mod mock_backend {
-    use goyda::core::{Backend, BackendUpdater};
-    use goyda::core::events::Update;
     use goyda::components::Asset;
+    use goyda::core::events::Update;
+    use goyda::core::{Backend, BackendUpdater};
     use goyda::{LayoutDirection, StyleProperty};
 
     #[derive(Clone, Debug, PartialEq)]
@@ -337,22 +360,64 @@ mod mock_backend {
         type PlatformView = View;
         type Updater = MockUpdater;
 
-        fn create_text(&mut self, content: &str) -> View { View::Text(content.to_string()) }
-        fn create_button(&mut self, text: &str) -> View { View::Button(text.to_string()) }
-        fn create_image(&mut self, _asset: &Asset) -> View { View::Image }
-        fn create_stack(&mut self, _direction: LayoutDirection, _spacing: i32, _children: Vec<View>) -> View { View::Stack }
-        fn create_scroll_view(&mut self, _direction: LayoutDirection, _spacing: i32, _children: Vec<View>) -> View { View::Stack }
-        fn create_overlay(&mut self, _children: Vec<View>) -> View { View::Stack }
-        fn create_text_input(&mut self, _placeholder: &str, _initial_text: &str) -> View { View::Text(String::new()) }
-        fn create_textarea(&mut self, _placeholder: &str, _initial_text: &str) -> View { View::Text(String::new()) }
-        fn create_checkbox(&mut self, _label: &str, _checked: bool) -> View { View::Button(String::new()) }
-        fn create_radio_button(&mut self, _group: &str, _label: &str, _selected: bool) -> View { View::Button(String::new()) }
-        fn create_switch(&mut self, _checked: bool) -> View { View::Button(String::new()) }
-        fn create_progress(&mut self, _value: f32) -> View { View::Button(String::new()) }
-        fn create_spacer(&mut self, _size: i32) -> View { View::Stack }
-        fn create_divider(&mut self) -> View { View::Stack }
-        fn clone_updater(&self) -> MockUpdater { MockUpdater }
-        fn apply_style(&mut self, _view: &View, _style: StyleProperty) { self.style_calls += 1; }
+        fn create_text(&mut self, content: &str) -> View {
+            View::Text(content.to_string())
+        }
+        fn create_button(&mut self, text: &str) -> View {
+            View::Button(text.to_string())
+        }
+        fn create_image(&mut self, _asset: &Asset) -> View {
+            View::Image
+        }
+        fn create_stack(
+            &mut self,
+            _direction: LayoutDirection,
+            _spacing: i32,
+            _children: Vec<View>,
+        ) -> View {
+            View::Stack
+        }
+        fn create_scroll_view(
+            &mut self,
+            _direction: LayoutDirection,
+            _spacing: i32,
+            _children: Vec<View>,
+        ) -> View {
+            View::Stack
+        }
+        fn create_overlay(&mut self, _children: Vec<View>) -> View {
+            View::Stack
+        }
+        fn create_text_input(&mut self, _placeholder: &str, _initial_text: &str) -> View {
+            View::Text(String::new())
+        }
+        fn create_textarea(&mut self, _placeholder: &str, _initial_text: &str) -> View {
+            View::Text(String::new())
+        }
+        fn create_checkbox(&mut self, _label: &str, _checked: bool) -> View {
+            View::Button(String::new())
+        }
+        fn create_radio_button(&mut self, _group: &str, _label: &str, _selected: bool) -> View {
+            View::Button(String::new())
+        }
+        fn create_switch(&mut self, _checked: bool) -> View {
+            View::Button(String::new())
+        }
+        fn create_progress(&mut self, _value: f32) -> View {
+            View::Button(String::new())
+        }
+        fn create_spacer(&mut self, _size: i32) -> View {
+            View::Stack
+        }
+        fn create_divider(&mut self) -> View {
+            View::Stack
+        }
+        fn clone_updater(&self) -> MockUpdater {
+            MockUpdater
+        }
+        fn apply_style(&mut self, _view: &View, _style: StyleProperty) {
+            self.style_calls += 1;
+        }
     }
 }
 
@@ -375,7 +440,8 @@ fn render_dispatches_button_to_create_button() {
 #[test]
 fn render_dispatches_stack_children_first() {
     let mut backend = MockBackend::default();
-    let view = Component::stack(LayoutDirection::Vertical, 4, vec![Component::button("A")]).render(&mut backend);
+    let view = Component::stack(LayoutDirection::Vertical, 4, vec![Component::button("A")])
+        .render(&mut backend);
     assert_eq!(view, View::Stack);
 }
 

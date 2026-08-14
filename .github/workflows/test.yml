@@ -1,0 +1,35 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+concurrency:
+  group: test-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    # windows-latest because goy actually builds/runs the windows target
+    # (GDI, HWNDs, ...) and several of its own tests spawn cmd.exe - the
+    # only host this workspace is verified to fully build and test on.
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Check the whole workspace builds
+        run: cargo check --workspace
+
+      - name: Test goyda-utils
+        run: cargo test -p goyda-utils
+
+      - name: Test goyda (windows backend)
+        run: cargo test -p goyda --features windows
+
+      - name: Test goy
+        run: cargo test -p goy

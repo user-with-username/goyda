@@ -6,6 +6,8 @@ pub struct Image {
 
 impl Image {
     pub fn new(asset: impl Into<Asset>) -> Component {
-        Component::Image(Self { asset: asset.into() })
+        Component::Image(Self {
+            asset: asset.into(),
+        })
     }
 }

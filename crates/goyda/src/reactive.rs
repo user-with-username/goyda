@@ -1,10 +1,10 @@
+use crate::core::Backend;
+use crate::core::backend::BackendUpdater;
+use crate::core::events::Update;
 use std::any::Any;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
-use crate::core::Backend;
-use crate::core::events::Update;
-use crate::core::backend::BackendUpdater;
 
 thread_local! {
     static RUNNING_EFFECT: RefCell<Option<Rc<RefCell<dyn FnMut()>>>> = RefCell::new(None);
@@ -113,7 +113,10 @@ impl<T: Clone + 'static> Signal<T> {
     pub fn new_keyed(key: &'static str, init: T) -> Self {
         let value = PERSISTENT_SIGNALS.with(|store| {
             let mut store = store.borrow_mut();
-            if let Some(existing) = store.get(key).and_then(|rc| rc.clone().downcast::<RefCell<T>>().ok()) {
+            if let Some(existing) = store
+                .get(key)
+                .and_then(|rc| rc.clone().downcast::<RefCell<T>>().ok())
+            {
                 existing
             } else {
                 let fresh = Rc::new(RefCell::new(init));
@@ -137,19 +140,28 @@ impl<T: Clone + serde::Serialize + serde::de::DeserializeOwned + 'static> Signal
     pub fn new_keyed(key: &'static str, init: T) -> Self {
         let value = PERSISTENT_SIGNALS.with(|store| {
             let mut store = store.borrow_mut();
-            if let Some(existing) = store.get(key).and_then(|rc| rc.clone().downcast::<RefCell<T>>().ok()) {
+            if let Some(existing) = store
+                .get(key)
+                .and_then(|rc| rc.clone().downcast::<RefCell<T>>().ok())
+            {
                 return existing;
             }
 
             let restored = RESTORED_STATE.with(|r| {
-                r.borrow().as_ref().and_then(|m| m.get(key)).and_then(|json| serde_json::from_str::<T>(json).ok())
+                r.borrow()
+                    .as_ref()
+                    .and_then(|m| m.get(key))
+                    .and_then(|json| serde_json::from_str::<T>(json).ok())
             });
             let fresh = Rc::new(RefCell::new(restored.unwrap_or(init)));
             store.insert(key.to_string(), fresh.clone());
 
             let dump_value = fresh.clone();
             DUMP_FNS.with(|d| {
-                d.borrow_mut().insert(key.to_string(), Box::new(move || serde_json::to_string(&*dump_value.borrow()).ok()));
+                d.borrow_mut().insert(
+                    key.to_string(),
+                    Box::new(move || serde_json::to_string(&*dump_value.borrow()).ok()),
+                );
             });
 
             fresh
@@ -168,7 +180,10 @@ impl<T: Clone + serde::Serialize + serde::de::DeserializeOwned + 'static> Signal
 pub fn dump_state() -> String {
     DUMP_FNS.with(|d| {
         let fns = d.borrow();
-        let map: HashMap<&str, String> = fns.iter().filter_map(|(k, f)| f().map(|v| (k.as_str(), v))).collect();
+        let map: HashMap<&str, String> = fns
+            .iter()
+            .filter_map(|(k, f)| f().map(|v| (k.as_str(), v)))
+            .collect();
         serde_json::to_string(&map).unwrap_or_default()
     })
 }
@@ -183,7 +198,7 @@ pub fn install_state(json: &str) {
 
 fn run_with_effect(effect: Rc<RefCell<dyn FnMut()>>) {
     let prev = RUNNING_EFFECT.with(|current| current.borrow().clone());
-    
+
     RUNNING_EFFECT.with(|current| {
         *current.borrow_mut() = Some(effect.clone());
     });
@@ -228,7 +243,10 @@ impl<T: Clone + 'static> Memo<T> {
 
         run_with_effect(effect.clone());
 
-        Self { signal, _effect: effect }
+        Self {
+            signal,
+            _effect: effect,
+        }
     }
 
     /// Reads the current value, subscribing the enclosing effect (if any)
@@ -250,7 +268,7 @@ impl<T: Clone + 'static> Clone for Memo<T> {
 /// Runs `f` immediately and again every time a [`Signal`] it reads changes.
 pub fn create_effect(f: impl FnMut() + 'static) {
     let effect_closure = Rc::new(RefCell::new(f));
-    
+
     EFFECTS.with(|effects| {
         effects.borrow_mut().push(effect_closure.clone());
     });
@@ -260,8 +278,12 @@ pub fn create_effect(f: impl FnMut() + 'static) {
 
 /// Applies a computed value to a mounted view, and keeps it in sync
 /// whenever a [`Signal`] read inside `compute` changes.
-pub fn reactive<V, U, B, T: 'static>(backend: &B, view: &V, compute: Rc<dyn Fn() -> T + 'static>, mut make_update: U)
-where
+pub fn reactive<V, U, B, T: 'static>(
+    backend: &B,
+    view: &V,
+    compute: Rc<dyn Fn() -> T + 'static>,
+    mut make_update: U,
+) where
     V: Clone + 'static,
     U: FnMut(T) -> Update + 'static,
     B: Backend<PlatformView = V>,

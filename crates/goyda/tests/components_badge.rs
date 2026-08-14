@@ -1,7 +1,7 @@
 //! Tests for `src/components/badge.rs`.
 
-use goyda::{Axis, Color, Component, Edge, StyleValue};
 use goyda::components::Badge;
+use goyda::{Axis, Color, Component, Edge, StyleValue};
 
 #[test]
 fn badge_is_pre_styled_colored_text() {

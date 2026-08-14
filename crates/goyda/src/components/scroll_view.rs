@@ -14,6 +14,10 @@ impl ScrollView {
     /// without one it just wraps to its content's own size, the same as a
     /// plain `Stack` (nothing to scroll).
     pub fn new(direction: LayoutDirection, spacing: i32, children: Vec<Component>) -> Component {
-        Component::ScrollView(Self { direction, spacing, children })
+        Component::ScrollView(Self {
+            direction,
+            spacing,
+            children,
+        })
     }
 }

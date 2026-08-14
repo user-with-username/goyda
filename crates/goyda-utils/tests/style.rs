@@ -1,6 +1,6 @@
 //! Tests for `src/style.rs`.
 
-use goyda_utils::style::{resolve_length, resolve_spacing, StyleValue, SPACING};
+use goyda_utils::style::{SPACING, StyleValue, resolve_length, resolve_spacing};
 
 #[test]
 fn spacing_scale_starts_at_zero_and_has_thirteen_steps() {

@@ -2,7 +2,7 @@
 //! `create_effect`). `Signal::new_keyed`'s persist-across-remount behavior
 //! already has dedicated tests inline in `src/reactive.rs` itself.
 
-use goyda::reactive::{Signal, Memo, create_effect};
+use goyda::reactive::{Memo, Signal, create_effect};
 use std::cell::{Cell, RefCell};
 use std::rc::Rc;
 
@@ -98,7 +98,11 @@ fn memo_does_not_recompute_when_an_unrelated_signal_changes() {
     assert_eq!(calls_after_construction, 2);
 
     untracked.set(999);
-    assert_eq!(calls.get(), calls_after_construction, "memo should not recompute for a signal it never read");
+    assert_eq!(
+        calls.get(),
+        calls_after_construction,
+        "memo should not recompute for a signal it never read"
+    );
 
     tracked.set(2);
     assert_eq!(memo.get(), 2);

@@ -1,7 +1,7 @@
-use syn::{visit_mut::VisitMut, Expr, Ident};
+use proc_macro2::{Group, TokenStream as TokenStream2, TokenTree};
 use quote::quote;
 use std::collections::HashSet;
-use proc_macro2::{TokenStream as TokenStream2, TokenTree, Group};
+use syn::{Expr, Ident, visit_mut::VisitMut};
 
 pub struct UiMacroTransformer {
     pub all_mut_vars: HashSet<Ident>,
@@ -9,17 +9,18 @@ pub struct UiMacroTransformer {
 
 impl UiMacroTransformer {
     pub fn process_macro_tokens(
-        &self, 
-        tokens: TokenStream2, 
-        counter: &mut usize, 
-        pre_clones: &mut Vec<TokenStream2>
+        &self,
+        tokens: TokenStream2,
+        counter: &mut usize,
+        pre_clones: &mut Vec<TokenStream2>,
     ) -> TokenStream2 {
         let mut trees: Vec<TokenTree> = tokens.into_iter().collect();
         let mut i = 0;
 
         while i < trees.len() {
             if let TokenTree::Group(group) = &trees[i] {
-                let transformed_inner = self.process_macro_tokens(group.stream(), counter, pre_clones);
+                let transformed_inner =
+                    self.process_macro_tokens(group.stream(), counter, pre_clones);
                 let mut new_group = Group::new(group.delimiter(), transformed_inner);
                 new_group.set_span(group.span());
                 trees[i] = TokenTree::Group(new_group);
@@ -32,8 +33,12 @@ impl UiMacroTransformer {
                     let is_property_key = if i + 1 < trees.len() {
                         if let TokenTree::Punct(p) = &trees[i + 1] {
                             p.as_char() == ':'
-                        } else { false }
-                    } else { false };
+                        } else {
+                            false
+                        }
+                    } else {
+                        false
+                    };
 
                     let next_is_dot = matches!(&trees.get(i + 1), Some(TokenTree::Punct(p)) if p.as_char() == '.');
 
@@ -41,10 +46,13 @@ impl UiMacroTransformer {
                         if let Some(TokenTree::Ident(member)) = trees.get(i + 2).cloned() {
                             let member_name = member.to_string();
 
-                            if matches!(member_name.as_str(), "get" | "set" | "update" | "clone" | "call") {
+                            if matches!(
+                                member_name.as_str(),
+                                "get" | "set" | "update" | "clone" | "call"
+                            ) {
                                 let shadow_ident = syn::Ident::new(
                                     &format!("{}_ui_shadow_{}", ident, counter),
-                                    ident.span()
+                                    ident.span(),
                                 );
                                 *counter += 1;
                                 pre_clones.push(quote! { let #shadow_ident = #ident.clone(); });
@@ -54,16 +62,21 @@ impl UiMacroTransformer {
                             }
 
                             let call_group = match trees.get(i + 3) {
-                                Some(TokenTree::Group(g)) if g.delimiter() == proc_macro2::Delimiter::Parenthesis => Some(g.clone()),
+                                Some(TokenTree::Group(g))
+                                    if g.delimiter() == proc_macro2::Delimiter::Parenthesis =>
+                                {
+                                    Some(g.clone())
+                                }
                                 _ => None,
                             };
 
                             if let Some(group) = call_group {
-                                let processed_args = self.process_macro_tokens(group.stream(), counter, pre_clones);
+                                let processed_args =
+                                    self.process_macro_tokens(group.stream(), counter, pre_clones);
 
                                 let call_shadow = syn::Ident::new(
                                     &format!("{}_call_shadow_{}", ident, counter),
-                                    ident.span()
+                                    ident.span(),
                                 );
                                 *counter += 1;
                                 pre_clones.push(quote! { let #call_shadow = #ident.clone(); });
@@ -71,7 +84,8 @@ impl UiMacroTransformer {
                                 let replacement = quote! {
                                     #call_shadow.call(|v| v.#member(#processed_args))
                                 };
-                                let replacement_trees: Vec<TokenTree> = replacement.into_iter().collect();
+                                let replacement_trees: Vec<TokenTree> =
+                                    replacement.into_iter().collect();
                                 trees.splice(i..=(i + 3), replacement_trees.clone());
                                 i += replacement_trees.len();
                                 continue;
@@ -85,7 +99,9 @@ impl UiMacroTransformer {
                                 let mut j = i + 4;
                                 while j < trees.len() {
                                     if let TokenTree::Punct(p) = &trees[j] {
-                                        if p.as_char() == ',' || p.as_char() == ';' { break; }
+                                        if p.as_char() == ',' || p.as_char() == ';' {
+                                            break;
+                                        }
                                     }
                                     right_tokens.push(trees[j].clone());
                                     j += 1;
@@ -98,7 +114,7 @@ impl UiMacroTransformer {
 
                                 let call_shadow = syn::Ident::new(
                                     &format!("{}_call_shadow_{}", ident, counter),
-                                    ident.span()
+                                    ident.span(),
                                 );
                                 *counter += 1;
                                 pre_clones.push(quote! { let #call_shadow = #ident.clone(); });
@@ -106,7 +122,8 @@ impl UiMacroTransformer {
                                 let replacement = quote! {
                                     #call_shadow.call(|v| v.#member = #right_stream)
                                 };
-                                let replacement_trees: Vec<TokenTree> = replacement.into_iter().collect();
+                                let replacement_trees: Vec<TokenTree> =
+                                    replacement.into_iter().collect();
                                 trees.splice(i..j, replacement_trees.clone());
                                 i += replacement_trees.len();
                                 continue;
@@ -114,13 +131,14 @@ impl UiMacroTransformer {
 
                             let call_shadow = syn::Ident::new(
                                 &format!("{}_call_shadow_{}", ident, counter),
-                                ident.span()
+                                ident.span(),
                             );
                             *counter += 1;
                             pre_clones.push(quote! { let #call_shadow = #ident.clone(); });
 
                             let replacement = quote! { #call_shadow.call(|v| v.#member) };
-                            let replacement_trees: Vec<TokenTree> = replacement.into_iter().collect();
+                            let replacement_trees: Vec<TokenTree> =
+                                replacement.into_iter().collect();
                             trees.splice(i..=(i + 2), replacement_trees.clone());
                             i += replacement_trees.len();
                             continue;
@@ -133,14 +151,20 @@ impl UiMacroTransformer {
 
                     if !is_property_key {
                         if i + 2 < trees.len() {
-                            if let (TokenTree::Punct(p1), TokenTree::Punct(p2)) = (&trees[i + 1], &trees[i + 2]) {
+                            if let (TokenTree::Punct(p1), TokenTree::Punct(p2)) =
+                                (&trees[i + 1], &trees[i + 2])
+                            {
                                 let op = p1.as_char();
-                                if p2.as_char() == '=' && (op == '+' || op == '-' || op == '*' || op == '/') {
+                                if p2.as_char() == '='
+                                    && (op == '+' || op == '-' || op == '*' || op == '/')
+                                {
                                     let mut right_tokens = Vec::new();
                                     let mut j = i + 3;
                                     while j < trees.len() {
                                         if let TokenTree::Punct(p) = &trees[j] {
-                                            if p.as_char() == ',' || p.as_char() == ';' { break; }
+                                            if p.as_char() == ',' || p.as_char() == ';' {
+                                                break;
+                                            }
                                         }
                                         right_tokens.push(trees[j].clone());
                                         j += 1;
@@ -150,11 +174,12 @@ impl UiMacroTransformer {
                                         counter,
                                         pre_clones,
                                     );
-                                    let op_punct = proc_macro2::Punct::new(op, proc_macro2::Spacing::Joint);
-                                    
+                                    let op_punct =
+                                        proc_macro2::Punct::new(op, proc_macro2::Spacing::Joint);
+
                                     let mutation_shadow = syn::Ident::new(
                                         &format!("{}_mut_shadow_{}", ident, counter),
-                                        ident.span()
+                                        ident.span(),
                                     );
                                     *counter += 1;
 
@@ -165,7 +190,8 @@ impl UiMacroTransformer {
                                     let replacement = quote! {
                                         #mutation_shadow.update(|v| *v #op_punct= #right_stream)
                                     };
-                                    let replacement_trees: Vec<TokenTree> = replacement.into_iter().collect();
+                                    let replacement_trees: Vec<TokenTree> =
+                                        replacement.into_iter().collect();
                                     trees.splice(i..j, replacement_trees.clone());
                                     i += replacement_trees.len();
                                     continue;
@@ -178,7 +204,9 @@ impl UiMacroTransformer {
                             let mut j = i + 2;
                             while j < trees.len() {
                                 if let TokenTree::Punct(p) = &trees[j] {
-                                    if p.as_char() == ',' || p.as_char() == ';' { break; }
+                                    if p.as_char() == ',' || p.as_char() == ';' {
+                                        break;
+                                    }
                                 }
                                 right_tokens.push(trees[j].clone());
                                 j += 1;
@@ -191,7 +219,7 @@ impl UiMacroTransformer {
 
                             let mutation_shadow = syn::Ident::new(
                                 &format!("{}_mut_shadow_{}", ident, counter),
-                                ident.span()
+                                ident.span(),
                             );
                             *counter += 1;
 
@@ -202,7 +230,8 @@ impl UiMacroTransformer {
                             let replacement = quote! {
                                 #mutation_shadow.set(#right_stream)
                             };
-                            let replacement_trees: Vec<TokenTree> = replacement.into_iter().collect();
+                            let replacement_trees: Vec<TokenTree> =
+                                replacement.into_iter().collect();
                             trees.splice(i..j, replacement_trees.clone());
                             i += replacement_trees.len();
                             continue;
@@ -210,7 +239,7 @@ impl UiMacroTransformer {
 
                         let shadow_ident = syn::Ident::new(
                             &format!("{}_ui_shadow_{}", ident, counter),
-                            ident.span()
+                            ident.span(),
                         );
                         *counter += 1;
 
@@ -236,17 +265,24 @@ impl UiMacroTransformer {
 impl VisitMut for UiMacroTransformer {
     fn visit_expr_mut(&mut self, expr: &mut Expr) {
         if let Expr::Macro(expr_macro) = expr {
-            let macro_name = expr_macro.mac.path.segments.last().unwrap().ident.to_string();
+            let macro_name = expr_macro
+                .mac
+                .path
+                .segments
+                .last()
+                .unwrap()
+                .ident
+                .to_string();
             if macro_name == "stack" || macro_name == "parse_children" {
                 let mut counter = 0;
                 let mut pre_clones = Vec::new();
-                
+
                 let transformed_tokens = self.process_macro_tokens(
-                    expr_macro.mac.tokens.clone(), 
-                    &mut counter, 
-                    &mut pre_clones
+                    expr_macro.mac.tokens.clone(),
+                    &mut counter,
+                    &mut pre_clones,
                 );
-                
+
                 expr_macro.mac.tokens = transformed_tokens;
 
                 if !pre_clones.is_empty() {
@@ -255,7 +291,8 @@ impl VisitMut for UiMacroTransformer {
                     *expr = syn::parse2(quote! {{
                         #pre_clones_stream
                         #current_macro
-                    }}).unwrap();
+                    }})
+                    .unwrap();
                 }
                 return;
             }

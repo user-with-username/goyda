@@ -1,6 +1,6 @@
+pub use inventory;
 #[cfg(feature = "android")]
 pub use jni;
-pub use inventory;
 #[cfg(feature = "web")]
 pub use wasm_bindgen;
 
@@ -18,19 +18,19 @@ pub mod web;
 #[cfg(feature = "windows")]
 pub mod windows;
 
-pub use crate::components::{Component, LayoutDirection, Color, Modifier};
-pub use crate::components::{Axis, Edge, StyleValue, StyleProperty};
+pub use crate::components::{Axis, Edge, StyleProperty, StyleValue};
+pub use crate::components::{Color, Component, LayoutDirection, Modifier};
+pub use crate::core::theme::{ThemeMode, cycle_theme, set_theme, theme_index};
 pub use crate::macros::IntoString;
 pub use crate::platform::{navigate, rerender};
-pub use crate::core::theme::{ThemeMode, theme_index, set_theme, cycle_theme};
 
 pub mod prelude {
-    pub use goyda_derive::{page, component};
-    pub use crate::{stack, parse_children, asset, asset_ref, theme};
-    pub use crate::components::{Component, LayoutDirection, Color, Modifier, Asset, Align};
-    pub use crate::reactive::{Signal, Memo};
+    pub use crate::components::{Align, Asset, Color, Component, LayoutDirection, Modifier};
     pub use crate::navigate;
-    pub use crate::{ThemeMode, theme_index, set_theme, cycle_theme};
+    pub use crate::reactive::{Memo, Signal};
+    pub use crate::{ThemeMode, cycle_theme, set_theme, theme_index};
+    pub use crate::{asset, asset_ref, parse_children, stack, theme};
+    pub use goyda_derive::{component, page};
 }
 
 /// A route registered with `#[page("...")]`, pairing a path with the

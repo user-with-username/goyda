@@ -1,0 +1,72 @@
+name: publish
+
+# Runs after `test` finishes on `main`, so a broken commit never gets
+# published - `push` triggering `publish` directly would race ahead of
+# `test` and could ship crates that don't even build.
+on:
+  workflow_run:
+    workflows: [test]
+    branches: [main]
+    types: [completed]
+
+permissions:
+  contents: write
+
+jobs:
+  publish:
+    if: >
+      github.event.workflow_run.conclusion == 'success' &&
+      !contains(github.event.workflow_run.head_commit.message, '[skip publish]')
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: cargo-edit
+
+      # Every workspace crate's own [package] version is bumped by one
+      # patch (0.1.0 -> 0.1.1, ...) on every publish run. They're all
+      # published together, so they're kept in lockstep rather than tracked
+      # independently.
+      - name: Bump every crate's patch version
+        shell: bash
+        run: |
+          set -e
+          for pkg in goyda-utils goyda-macros goyda-derive goyda goy; do
+            cargo set-version -p "$pkg" --bump patch
+          done
+
+      - name: Commit the version bump
+        shell: bash
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "chore: bump versions [skip ci] [skip publish]"
+          git push origin HEAD:main
+
+      # Published in dependency order - goyda depends on the first three
+      # by path+version, goy depends on goyda the same way. A short pause
+      # after each publish gives the crates.io index time to catch up
+      # before the next crate's verify-build tries to resolve it.
+      - name: Publish crates
+        shell: bash
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ secrets.CARGO_REGISTRY_TOKEN }}
+        run: |
+          set -e
+          for pkg in goyda-utils goyda-macros goyda-derive; do
+            cargo publish -p "$pkg"
+            sleep 15
+          done
+          cargo publish -p goyda --features windows
+          sleep 15
+          cargo publish -p goy

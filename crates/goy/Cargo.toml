@@ -1,0 +1,24 @@
+[package]
+name = "goy"
+version = "0.1.0"
+edition = "2024"
+description = "CLI for goyda - build and hot-reload the same UI to Windows, Android, and web"
+license = "MIT"
+
+[dependencies]
+anyhow = "1.0"
+cargo_metadata = "0.18"
+clap = { version = "4.5", features = ["derive"] }
+dirs = "5.0"
+ureq = { version = "2.10", features = ["tls"] }
+goyda = { path = "../goyda", version = "0.1.0", features = ["android"] }
+inventory = "0.3.15"
+dunce = "1.0.5"
+which = "8.0.5"
+zip = "8.6.0"
+cargo_toml = "1.0.0"
+colored = "2.0"
+crossterm = "0.28"
+
+[target.'cfg(windows)'.dependencies]
+windows-sys = { version = "0.61.2", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging", "Win32_System_DataExchange"] }

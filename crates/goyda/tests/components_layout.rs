@@ -1,11 +1,14 @@
 //! Tests for `src/components/layout.rs`.
 
-use goyda::{Component, LayoutDirection};
 use goyda::components::Stack;
+use goyda::{Component, LayoutDirection};
 
 #[test]
 fn stack_new_sets_direction_spacing_and_children() {
-    let children = vec![Component::text(|| "a".into()), Component::text(|| "b".into())];
+    let children = vec![
+        Component::text(|| "a".into()),
+        Component::text(|| "b".into()),
+    ];
     match Stack::new(LayoutDirection::Horizontal, 12, children) {
         Component::Stack(stack) => {
             assert_eq!(stack.direction, LayoutDirection::Horizontal);

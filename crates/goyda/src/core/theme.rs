@@ -20,7 +20,10 @@ pub fn theme_index() -> usize {
 
 /// Sets the starting theme variant from the OS's light/dark preference.
 pub fn init_theme_mode(mode: ThemeMode) {
-    THEME_INDEX.store(if mode == ThemeMode::Dark { 1 } else { 0 }, Ordering::Relaxed);
+    THEME_INDEX.store(
+        if mode == ThemeMode::Dark { 1 } else { 0 },
+        Ordering::Relaxed,
+    );
 }
 
 /// Switches to the [`crate::theme`] variant at `index` (by declaration

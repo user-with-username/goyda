@@ -24,19 +24,31 @@ pub const CLASS_NAME: &str = "GoydaControl\0";
 pub enum ControlKind {
     Text(String),
     Button(String),
-    Image { bitmap: Option<HBITMAP>, width: i32, height: i32 },
+    Image {
+        bitmap: Option<HBITMAP>,
+        width: i32,
+        height: i32,
+    },
     /// `children` is kept in the order `create_stack` built them, so a
     /// window resize can re-run layout later (see
     /// [`crate::windows::layout::relayout`]) without needing to re-render
     /// the component tree - only the initial (wrap-content) sizing happens
     /// during `create_stack` itself.
-    Panel { direction: LayoutDirection, spacing: i32, children: Vec<HWND> },
+    Panel {
+        direction: LayoutDirection,
+        spacing: i32,
+        children: Vec<HWND>,
+    },
     /// Structurally identical to `Panel` - kept as its own variant (rather
     /// than a bool flag on `Panel`) so `relayout` (see
     /// `crate::windows::layout`) can pattern-match both together with an
     /// or-pattern while everything else that only cares about "is this a
     /// panel" (e.g. `paint.rs`) can still tell them apart.
-    ScrollView { direction: LayoutDirection, spacing: i32, children: Vec<HWND> },
+    ScrollView {
+        direction: LayoutDirection,
+        spacing: i32,
+        children: Vec<HWND>,
+    },
     /// `text` holds what's actually been typed (kept in sync with
     /// [`ControlState::text_buffer`] by the `text_watcher` listener's
     /// `WM_CHAR` hook), `placeholder` is only drawn when `text` is empty.
@@ -44,20 +56,32 @@ pub enum ControlKind {
     /// (`false`) from a [`Textarea`](crate::components::Textarea) (`true`) -
     /// same control kind either way, since the only real differences are
     /// whether Enter inserts a newline and how the text wraps/sizes.
-    TextInput { text: String, placeholder: String, multiline: bool },
-    Checkbox { label: String },
+    TextInput {
+        text: String,
+        placeholder: String,
+        multiline: bool,
+    },
+    Checkbox {
+        label: String,
+    },
     /// Which group (see [`RADIO_GROUPS`]) is tracked there, not here.
-    RadioButton { label: String },
+    RadioButton {
+        label: String,
+    },
     Switch,
     /// `0.0..=1.0`.
-    Progress { value: f32 },
+    Progress {
+        value: f32,
+    },
     Spacer,
     Divider,
     /// No linear flow like `Panel` - every child is positioned at its own
     /// `ControlState::offset_x`/`offset_y`, stacked by
     /// `ControlState::z_index` (`position: absolute` in CSS terms). See
     /// [`crate::components::Overlay`].
-    Overlay { children: Vec<HWND> },
+    Overlay {
+        children: Vec<HWND>,
+    },
 }
 
 #[derive(Clone, Default)]
@@ -191,12 +215,21 @@ pub fn key(hwnd: HWND) -> isize {
 }
 
 pub fn with_state<R>(hwnd: HWND, f: impl FnOnce(&mut ControlState) -> R) -> Option<R> {
-    CONTROLS.with(|c| c.borrow_mut().get_mut(&key(hwnd)).and_then(|d| d.state.as_mut()).map(f))
+    CONTROLS.with(|c| {
+        c.borrow_mut()
+            .get_mut(&key(hwnd))
+            .and_then(|d| d.state.as_mut())
+            .map(f)
+    })
 }
 
 pub fn register_raw_hook(hwnd: HWND, hook: RawHook) {
     CONTROLS.with(|c| {
-        c.borrow_mut().entry(key(hwnd)).or_default().hooks.push(hook);
+        c.borrow_mut()
+            .entry(key(hwnd))
+            .or_default()
+            .hooks
+            .push(hook);
     });
 }
 
@@ -213,7 +246,13 @@ pub fn remove(hwnd: HWND) {
 }
 
 pub fn natural_size(hwnd: HWND) -> (i32, i32) {
-    with_state(hwnd, |s| (s.explicit_width.unwrap_or(s.natural_size.0), s.explicit_height.unwrap_or(s.natural_size.1))).unwrap_or((0, 0))
+    with_state(hwnd, |s| {
+        (
+            s.explicit_width.unwrap_or(s.natural_size.0),
+            s.explicit_height.unwrap_or(s.natural_size.1),
+        )
+    })
+    .unwrap_or((0, 0))
 }
 
 pub fn to_colorref(argb: u32) -> COLORREF {
@@ -223,7 +262,12 @@ pub fn to_colorref(argb: u32) -> COLORREF {
     (b << 16) | (g << 8) | r
 }
 
-pub unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lparam: LPARAM) -> LRESULT {
+pub unsafe extern "system" fn wndproc(
+    hwnd: HWND,
+    msg: u32,
+    wparam: WPARAM,
+    lparam: LPARAM,
+) -> LRESULT {
     use windows_sys::Win32::Graphics::Gdi::*;
     use windows_sys::Win32::UI::WindowsAndMessaging::*;
 
@@ -231,8 +275,12 @@ pub unsafe extern "system" fn wndproc(hwnd: HWND, msg: u32, wparam: WPARAM, lpar
     // registered for), *before* the built-in handling below - a hook never
     // needs to suppress default painting/erasing, so there's nothing to
     // short-circuit here.
-    let hooks: Vec<RawHook> =
-        CONTROLS.with(|c| c.borrow().get(&key(hwnd)).map(|d| d.hooks.clone()).unwrap_or_default());
+    let hooks: Vec<RawHook> = CONTROLS.with(|c| {
+        c.borrow()
+            .get(&key(hwnd))
+            .map(|d| d.hooks.clone())
+            .unwrap_or_default()
+    });
     for hook in &hooks {
         hook(msg, wparam, lparam);
     }

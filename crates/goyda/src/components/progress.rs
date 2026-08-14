@@ -16,7 +16,9 @@ impl Progress {
     ///
     /// [`Signal`]: crate::reactive::Signal
     pub fn new(compute: impl Fn() -> f32 + 'static) -> Component {
-        Component::Progress(Self { compute: Rc::new(compute) })
+        Component::Progress(Self {
+            compute: Rc::new(compute),
+        })
     }
 
     /// A fixed, non-reactive progress value.

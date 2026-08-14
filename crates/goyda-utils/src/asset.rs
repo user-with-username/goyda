@@ -15,13 +15,19 @@ pub struct Asset {
 impl Asset {
     /// Creates an asset reference from a path relative to `assets/`.
     pub fn new(path: impl Into<String>) -> Self {
-        Self { path: normalize(path.into()), bytes: None }
+        Self {
+            path: normalize(path.into()),
+            bytes: None,
+        }
     }
 
     /// Creates an asset whose file content is embedded in the binary.
     /// Typically produced by the `asset!` macro rather than called directly.
     pub fn embedded(path: impl Into<String>, bytes: &'static [u8]) -> Self {
-        Self { path: normalize(path.into()), bytes: Some(bytes) }
+        Self {
+            path: normalize(path.into()),
+            bytes: Some(bytes),
+        }
     }
 
     /// The asset's path relative to the project's `assets/` directory.

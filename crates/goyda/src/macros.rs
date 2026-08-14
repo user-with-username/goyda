@@ -6,15 +6,21 @@ pub trait IntoString {
 }
 
 impl<T: std::fmt::Display> IntoString for T {
-    fn to_string_reactive(&self) -> String { format!("{}", self) }
+    fn to_string_reactive(&self) -> String {
+        format!("{}", self)
+    }
 }
 
 impl<T: std::fmt::Display + Copy + 'static> IntoString for crate::reactive::Signal<T> {
-    fn to_string_reactive(&self) -> String { format!("{}", self.get()) }
+    fn to_string_reactive(&self) -> String {
+        format!("{}", self.get())
+    }
 }
 
 impl<T: std::fmt::Display + Copy + 'static> IntoString for crate::reactive::Memo<T> {
-    fn to_string_reactive(&self) -> String { format!("{}", self.get()) }
+    fn to_string_reactive(&self) -> String {
+        format!("{}", self.get())
+    }
 }
 
 /// Declares a set of named theme variants and the colors that vary between

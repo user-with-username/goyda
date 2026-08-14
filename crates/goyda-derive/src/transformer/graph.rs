@@ -1,12 +1,10 @@
-use syn::{
-    visit_mut::VisitMut, visit::Visit, Expr, ItemFn, Local, Stmt, Ident,
-};
-use quote::quote;
-use std::collections::{HashSet, HashMap};
 use petgraph::graph::DiGraph;
+use quote::quote;
+use std::collections::{HashMap, HashSet};
+use syn::{Expr, Ident, ItemFn, Local, Stmt, visit::Visit, visit_mut::VisitMut};
 
-use crate::utils::as_mut_pat_ident;
 use crate::scanner::DependencyScanner;
+use crate::utils::as_mut_pat_ident;
 
 pub struct ReactivityGraphTransformer {
     pub all_mut_vars: HashSet<Ident>,
@@ -35,7 +33,9 @@ impl ReactivityGraphTransformer {
     }
 
     pub fn build_dependency_graph(&mut self, item_fn: &ItemFn) {
-        struct MutCollector { vars: HashSet<Ident> }
+        struct MutCollector {
+            vars: HashSet<Ident>,
+        }
         impl<'ast> Visit<'ast> for MutCollector {
             fn visit_local(&mut self, local: &'ast Local) {
                 if let Some(pat_ident) = as_mut_pat_ident(&local.pat) {
@@ -45,7 +45,9 @@ impl ReactivityGraphTransformer {
             }
         }
 
-        let mut collector = MutCollector { vars: HashSet::new() };
+        let mut collector = MutCollector {
+            vars: HashSet::new(),
+        };
         collector.visit_item_fn(item_fn);
         self.all_mut_vars = collector.vars.clone();
 
@@ -91,7 +93,9 @@ impl ReactivityGraphTransformer {
         edge_collector.visit_item_fn(item_fn);
 
         for (from, to) in edge_collector.edges {
-            if let (Some(&f_idx), Some(&t_idx)) = (self.node_indices.get(&from), self.node_indices.get(&to)) {
+            if let (Some(&f_idx), Some(&t_idx)) =
+                (self.node_indices.get(&from), self.node_indices.get(&to))
+            {
                 self.graph.add_edge(f_idx, t_idx, ());
             }
         }
@@ -115,8 +119,14 @@ impl VisitMut for ReactivityGraphTransformer {
                     };
                     let init_expr = &init_expr;
 
-                    let incoming_edges: Vec<_> = self.node_indices.get(&ident)
-                        .map(|&idx| self.graph.neighbors_directed(idx, petgraph::Direction::Incoming).collect())
+                    let incoming_edges: Vec<_> = self
+                        .node_indices
+                        .get(&ident)
+                        .map(|&idx| {
+                            self.graph
+                                .neighbors_directed(idx, petgraph::Direction::Incoming)
+                                .collect()
+                        })
                         .unwrap_or_default();
 
                     if incoming_edges.is_empty() {
@@ -143,7 +153,8 @@ impl VisitMut for ReactivityGraphTransformer {
                         } else {
                             syn::parse2(quote! {
                                 let #ident = ::goyda::reactive::Signal::new(#init_expr);
-                            }).unwrap()
+                            })
+                            .unwrap()
                         };
                     } else {
                         let mut scanner = DependencyScanner {
@@ -157,20 +168,26 @@ impl VisitMut for ReactivityGraphTransformer {
                         let mut counter = 0;
 
                         for dep in scanner.found_idents {
-                            let shadow = syn::Ident::new(&format!("{}_memo_shadow_{}", dep, counter), dep.span());
+                            let shadow = syn::Ident::new(
+                                &format!("{}_memo_shadow_{}", dep, counter),
+                                dep.span(),
+                            );
                             counter += 1;
                             clones.push(quote! { let #shadow = #dep.clone(); });
                             shadow_mappings.insert(dep, shadow);
                         }
 
                         let mut body_expr = init_expr.clone();
-                        struct MemoReplacer { mappings: HashMap<Ident, Ident> }
+                        struct MemoReplacer {
+                            mappings: HashMap<Ident, Ident>,
+                        }
                         impl VisitMut for MemoReplacer {
                             fn visit_expr_mut(&mut self, expr: &mut Expr) {
                                 if let Expr::Path(ep) = expr {
                                     if let Some(id) = ep.path.get_ident() {
                                         if let Some(shadow_id) = self.mappings.get(id) {
-                                            *expr = syn::parse2(quote! { #shadow_id.get() }).unwrap();
+                                            *expr =
+                                                syn::parse2(quote! { #shadow_id.get() }).unwrap();
                                             return;
                                         }
                                     }
@@ -178,7 +195,9 @@ impl VisitMut for ReactivityGraphTransformer {
                                 syn::visit_mut::visit_expr_mut(self, expr);
                             }
                         }
-                        let mut replacer = MemoReplacer { mappings: shadow_mappings };
+                        let mut replacer = MemoReplacer {
+                            mappings: shadow_mappings,
+                        };
                         replacer.visit_expr_mut(&mut body_expr);
 
                         let clones_stream: proc_macro2::TokenStream = clones.into_iter().collect();
@@ -189,14 +208,16 @@ impl VisitMut for ReactivityGraphTransformer {
                                     #clones_stream
                                     ::goyda::reactive::Memo::new(move || #body_expr)
                                 };
-                            }).unwrap()
+                            })
+                            .unwrap()
                         } else {
                             syn::parse2(quote! {
                                 let #ident = {
                                     #clones_stream
                                     ::goyda::reactive::Memo::new(move || #body_expr)
                                 };
-                            }).unwrap()
+                            })
+                            .unwrap()
                         };
                     }
                     return;

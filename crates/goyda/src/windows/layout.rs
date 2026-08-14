@@ -1,5 +1,7 @@
 use windows_sys::Win32::Foundation::HWND;
-use windows_sys::Win32::UI::WindowsAndMessaging::{MoveWindow, SetWindowPos, SWP_NOMOVE, SWP_NOZORDER};
+use windows_sys::Win32::UI::WindowsAndMessaging::{
+    MoveWindow, SWP_NOMOVE, SWP_NOZORDER, SetWindowPos,
+};
 
 use crate::components::{Align, LayoutDirection};
 
@@ -7,13 +9,30 @@ use super::state::{self, ControlKind};
 
 pub fn relayout(hwnd: HWND, width: i32, height: i32) {
     unsafe {
-        SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0, width.max(0), height.max(0), SWP_NOMOVE | SWP_NOZORDER);
+        SetWindowPos(
+            hwnd,
+            std::ptr::null_mut(),
+            0,
+            0,
+            width.max(0),
+            height.max(0),
+            SWP_NOMOVE | SWP_NOZORDER,
+        );
     }
 
     let panel = state::with_state(hwnd, |s| {
         let scrollable = matches!(s.kind, ControlKind::ScrollView { .. });
         match &s.kind {
-            ControlKind::Panel { direction, spacing, children } | ControlKind::ScrollView { direction, spacing, children } => Some((
+            ControlKind::Panel {
+                direction,
+                spacing,
+                children,
+            }
+            | ControlKind::ScrollView {
+                direction,
+                spacing,
+                children,
+            } => Some((
                 *direction,
                 *spacing,
                 children.clone(),
@@ -28,7 +47,19 @@ pub fn relayout(hwnd: HWND, width: i32, height: i32) {
     })
     .flatten();
 
-    let Some((direction, spacing, children, padding, align_items, justify_content, scrollable, scroll_offset)) = panel else { return };
+    let Some((
+        direction,
+        spacing,
+        children,
+        padding,
+        align_items,
+        justify_content,
+        scrollable,
+        scroll_offset,
+    )) = panel
+    else {
+        return;
+    };
 
     let content_x = padding.left;
     let content_y = padding.top;
@@ -48,7 +79,8 @@ pub fn relayout(hwnd: HWND, width: i32, height: i32) {
     let sizes: Vec<((i32, i32), bool)> = children
         .iter()
         .map(|c| {
-            let is_image = state::with_state(*c, |s| matches!(s.kind, ControlKind::Image { .. })).unwrap_or(false);
+            let is_image = state::with_state(*c, |s| matches!(s.kind, ControlKind::Image { .. }))
+                .unwrap_or(false);
             (state::natural_size(*c), is_image)
         })
         .collect();
@@ -78,7 +110,8 @@ pub fn relayout(hwnd: HWND, width: i32, height: i32) {
     }
 
     let n = children.len();
-    let total_natural_main: i32 = main_sizes.iter().sum::<i32>() + spacing * (n.saturating_sub(1)) as i32;
+    let total_natural_main: i32 =
+        main_sizes.iter().sum::<i32>() + spacing * (n.saturating_sub(1)) as i32;
     let slack = (content_main - total_natural_main).max(0);
 
     // `JustifyContent` only has slack to work with once every child already
@@ -116,10 +149,24 @@ pub fn relayout(hwnd: HWND, width: i32, height: i32) {
             }
         };
 
-        let scrolled_cursor = if scrollable { cursor - scroll_offset } else { cursor };
+        let scrolled_cursor = if scrollable {
+            cursor - scroll_offset
+        } else {
+            cursor
+        };
         let (x, y, cw, ch) = match direction {
-            LayoutDirection::Horizontal => (content_x + scrolled_cursor, content_y + cross_offset, main, cross_size),
-            LayoutDirection::Vertical => (content_x + cross_offset, content_y + scrolled_cursor, cross_size, main),
+            LayoutDirection::Horizontal => (
+                content_x + scrolled_cursor,
+                content_y + cross_offset,
+                main,
+                cross_size,
+            ),
+            LayoutDirection::Vertical => (
+                content_x + cross_offset,
+                content_y + scrolled_cursor,
+                cross_size,
+                main,
+            ),
         };
 
         unsafe {
@@ -133,9 +180,16 @@ pub fn relayout(hwnd: HWND, width: i32, height: i32) {
 
 pub fn content_main_size(hwnd: HWND) -> Option<(LayoutDirection, i32)> {
     let panel = state::with_state(hwnd, |s| match &s.kind {
-        ControlKind::Panel { direction, spacing, children } | ControlKind::ScrollView { direction, spacing, children } => {
-            Some((*direction, *spacing, children.clone()))
+        ControlKind::Panel {
+            direction,
+            spacing,
+            children,
         }
+        | ControlKind::ScrollView {
+            direction,
+            spacing,
+            children,
+        } => Some((*direction, *spacing, children.clone())),
         _ => None,
     })
     .flatten()?;

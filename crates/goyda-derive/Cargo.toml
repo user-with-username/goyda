@@ -2,6 +2,8 @@
 name = "goyda-derive"
 version = "0.1.0"
 edition = "2024"
+description = "#[page]/#[component] proc macros for goyda - internal, not meant to be used directly"
+license = "MIT"
 
 [lib]
 proc-macro = true

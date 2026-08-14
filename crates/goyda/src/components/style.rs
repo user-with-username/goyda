@@ -1,4 +1,4 @@
-pub use goyda_utils::{Align, Axis, Edge, StyleProperty, StyleValue, SPACING};
+pub use goyda_utils::{Align, Axis, Edge, SPACING, StyleProperty, StyleValue};
 
 #[macro_export]
 macro_rules! style_methods {

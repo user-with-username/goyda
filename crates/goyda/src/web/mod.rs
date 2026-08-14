@@ -4,10 +4,10 @@ pub use backend::WebBackend;
 
 use std::cell::RefCell;
 
-use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
+use wasm_bindgen::prelude::*;
 
-use crate::{find_page, Page};
+use crate::{Page, find_page};
 
 fn current_path() -> String {
     web_sys::window()
@@ -42,7 +42,10 @@ fn render_page(page: &Page) {
     MOUNT.with(|cell| {
         let mut slot = cell.borrow_mut();
         let (backend, container) = slot.get_or_insert_with(|| {
-            (WebBackend::new(), mount_root().expect("goyda(web): failed to find a mount root"))
+            (
+                WebBackend::new(),
+                mount_root().expect("goyda(web): failed to find a mount root"),
+            )
         });
 
         let component = (page.factory)();
@@ -66,7 +69,10 @@ pub fn navigate(path: &str) {
     let Some(page) = find_page(path) else {
         #[cfg(debug_assertions)]
         web_sys::console::warn_1(
-            &format!("goyda(web): navigate(\"{path}\") - no #[page(...)] registered for that route").into(),
+            &format!(
+                "goyda(web): navigate(\"{path}\") - no #[page(...)] registered for that route"
+            )
+            .into(),
         );
         return;
     };
@@ -125,7 +131,8 @@ pub fn goyda_start() -> Result<(), JsValue> {
 
     render_page(page);
 
-    let window = web_sys::window().ok_or_else(|| JsValue::from_str("goyda(web): no global `window`"))?;
+    let window =
+        web_sys::window().ok_or_else(|| JsValue::from_str("goyda(web): no global `window`"))?;
     let on_pop_state = Closure::<dyn Fn()>::new(handle_pop_state);
     window
         .add_event_listener_with_callback("popstate", on_pop_state.as_ref().unchecked_ref())
@@ -153,10 +160,13 @@ pub fn goyda_install_state(json: String) {
 /// wasm module, e.g. ahead of a hot reload.
 #[wasm_bindgen]
 pub fn goyda_teardown() {
-    let Some(window) = web_sys::window() else { return };
+    let Some(window) = web_sys::window() else {
+        return;
+    };
     POPSTATE_CLOSURE.with(|cell| {
         if let Some(closure) = cell.borrow_mut().take() {
-            let _ = window.remove_event_listener_with_callback("popstate", closure.as_ref().unchecked_ref());
+            let _ = window
+                .remove_event_listener_with_callback("popstate", closure.as_ref().unchecked_ref());
         }
     });
 }

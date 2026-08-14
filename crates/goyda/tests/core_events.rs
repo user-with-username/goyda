@@ -10,13 +10,29 @@ use goyda::core::events::{Event, Update};
 fn event_variants_construct_and_match() {
     assert!(matches!(Event::Click, Event::Click));
     assert!(matches!(Event::LongClick, Event::LongClick));
-    assert!(matches!(Event::CheckedChanged(true), Event::CheckedChanged(true)));
-    assert!(matches!(Event::FocusChanged(false), Event::FocusChanged(false)));
+    assert!(matches!(
+        Event::CheckedChanged(true),
+        Event::CheckedChanged(true)
+    ));
+    assert!(matches!(
+        Event::FocusChanged(false),
+        Event::FocusChanged(false)
+    ));
     assert!(matches!(Event::ValueChanged(0.5), Event::ValueChanged(v) if v == 0.5));
 
-    let text_changed = Event::TextChanged { text: "hi".into(), start: 1, before: 2, count: 3 };
+    let text_changed = Event::TextChanged {
+        text: "hi".into(),
+        start: 1,
+        before: 2,
+        count: 3,
+    };
     match text_changed {
-        Event::TextChanged { text, start, before, count } => {
+        Event::TextChanged {
+            text,
+            start,
+            before,
+            count,
+        } => {
             assert_eq!(text, "hi");
             assert_eq!(start, 1);
             assert_eq!(before, 2);

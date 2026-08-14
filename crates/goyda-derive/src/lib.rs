@@ -2,14 +2,14 @@
 
 extern crate proc_macro;
 
-mod utils;
 mod scanner;
 mod transformer;
+mod utils;
 
 use proc_macro::TokenStream;
 use quote::quote;
-use syn::{parse_macro_input, ItemFn, LitStr};
 use syn::visit_mut::VisitMut;
+use syn::{ItemFn, LitStr, parse_macro_input};
 use transformer::{ReactivityGraphTransformer, UiMacroTransformer};
 
 fn transform_reactive_fn(input_fn: &mut ItemFn, key_namespace: Option<String>) {
@@ -19,7 +19,9 @@ fn transform_reactive_fn(input_fn: &mut ItemFn, key_namespace: Option<String>) {
     let mut_vars_cache = graph_transformer.all_mut_vars.clone();
     graph_transformer.visit_item_fn_mut(input_fn);
 
-    let mut ui_transformer = UiMacroTransformer { all_mut_vars: mut_vars_cache };
+    let mut ui_transformer = UiMacroTransformer {
+        all_mut_vars: mut_vars_cache,
+    };
     ui_transformer.visit_item_fn_mut(input_fn);
 }
 
@@ -71,7 +73,10 @@ pub fn page(attr: TokenStream, item: TokenStream) -> TokenStream {
     transform_reactive_fn(&mut input_fn, Some(route_path.value()));
 
     let fn_name = &input_fn.sig.ident;
-    let module_name = syn::Ident::new(&format!("__goyda_page_container_{}", fn_name), fn_name.span());
+    let module_name = syn::Ident::new(
+        &format!("__goyda_page_container_{}", fn_name),
+        fn_name.span(),
+    );
     let register_name = syn::Ident::new(&format!("__GOYDA_PAGE_{}", fn_name), fn_name.span());
 
     // Registration only - every platform resolves `#[page(...)]` routes the

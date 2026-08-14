@@ -1,5 +1,5 @@
-use syn::{visit::Visit, Ident};
 use std::collections::HashSet;
+use syn::{Ident, visit::Visit};
 
 pub struct DependencyScanner {
     pub found_idents: HashSet<Ident>,

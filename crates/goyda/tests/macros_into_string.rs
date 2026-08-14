@@ -2,7 +2,7 @@
 //! use to stringify each interpolated part.
 
 use goyda::macros::IntoString;
-use goyda::prelude::{Signal, Memo};
+use goyda::prelude::{Memo, Signal};
 
 #[test]
 fn display_types_format_via_display() {
