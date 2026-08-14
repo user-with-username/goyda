@@ -33,9 +33,9 @@ pub fn styles_page() -> Component {
             .width(200)
             .ellipsis(),
 
-        Component::radio_button("plan", "Free", true)
+        radio_button { group: "plan", label: "Free", selected: true }
             .on_checked_change(move |_| plan = "Free".into()),
-        Component::radio_button("plan", "Pro", false)
+        radio_button { group: "plan", label: "Pro", selected: false }
             .on_checked_change(move |_| plan = "Pro".into()),
         text { "Selected plan: ", plan }
             .color(Color::GRAY),

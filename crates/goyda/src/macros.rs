@@ -228,6 +228,114 @@ macro_rules! parse_children {
         $children.push($crate::Component::image($src));
     };
 
+    ($children:ident, text_input { placeholder: $ph:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ , $($tail:tt)*) => {
+        $children.push($crate::Component::text_input($ph) $( . $method ( $($args)* ) )+ );
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, text_input { placeholder: $ph:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ $(,)?) => {
+        $children.push($crate::Component::text_input($ph) $( . $method ( $($args)* ) )+ );
+    };
+
+    ($children:ident, text_input { placeholder: $ph:expr $(,)? }, $($tail:tt)*) => {
+        $children.push($crate::Component::text_input($ph));
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, text_input { placeholder: $ph:expr $(,)? } $(,)?) => {
+        $children.push($crate::Component::text_input($ph));
+    };
+
+    ($children:ident, textarea { placeholder: $ph:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ , $($tail:tt)*) => {
+        $children.push($crate::Component::textarea($ph) $( . $method ( $($args)* ) )+ );
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, textarea { placeholder: $ph:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ $(,)?) => {
+        $children.push($crate::Component::textarea($ph) $( . $method ( $($args)* ) )+ );
+    };
+
+    ($children:ident, textarea { placeholder: $ph:expr $(,)? }, $($tail:tt)*) => {
+        $children.push($crate::Component::textarea($ph));
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, textarea { placeholder: $ph:expr $(,)? } $(,)?) => {
+        $children.push($crate::Component::textarea($ph));
+    };
+
+    ($children:ident, checkbox { label: $label:expr, checked: $checked:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ , $($tail:tt)*) => {
+        $children.push($crate::Component::checkbox($label, $checked) $( . $method ( $($args)* ) )+ );
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, checkbox { label: $label:expr, checked: $checked:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ $(,)?) => {
+        $children.push($crate::Component::checkbox($label, $checked) $( . $method ( $($args)* ) )+ );
+    };
+
+    ($children:ident, checkbox { label: $label:expr, checked: $checked:expr $(,)? }, $($tail:tt)*) => {
+        $children.push($crate::Component::checkbox($label, $checked));
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, checkbox { label: $label:expr, checked: $checked:expr $(,)? } $(,)?) => {
+        $children.push($crate::Component::checkbox($label, $checked));
+    };
+
+    ($children:ident, radio_button { group: $group:expr, label: $label:expr, selected: $selected:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ , $($tail:tt)*) => {
+        $children.push($crate::Component::radio_button($group, $label, $selected) $( . $method ( $($args)* ) )+ );
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, radio_button { group: $group:expr, label: $label:expr, selected: $selected:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ $(,)?) => {
+        $children.push($crate::Component::radio_button($group, $label, $selected) $( . $method ( $($args)* ) )+ );
+    };
+
+    ($children:ident, radio_button { group: $group:expr, label: $label:expr, selected: $selected:expr $(,)? }, $($tail:tt)*) => {
+        $children.push($crate::Component::radio_button($group, $label, $selected));
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, radio_button { group: $group:expr, label: $label:expr, selected: $selected:expr $(,)? } $(,)?) => {
+        $children.push($crate::Component::radio_button($group, $label, $selected));
+    };
+
+    ($children:ident, switch { checked: $checked:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ , $($tail:tt)*) => {
+        $children.push($crate::Component::switch($checked) $( . $method ( $($args)* ) )+ );
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, switch { checked: $checked:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ $(,)?) => {
+        $children.push($crate::Component::switch($checked) $( . $method ( $($args)* ) )+ );
+    };
+
+    ($children:ident, switch { checked: $checked:expr $(,)? }, $($tail:tt)*) => {
+        $children.push($crate::Component::switch($checked));
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, switch { checked: $checked:expr $(,)? } $(,)?) => {
+        $children.push($crate::Component::switch($checked));
+    };
+
+    ($children:ident, progress { value: $value:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ , $($tail:tt)*) => {
+        $children.push($crate::Component::progress($value) $( . $method ( $($args)* ) )+ );
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, progress { value: $value:expr $(,)? } $( . $method:ident ( $($args:tt)* ) )+ $(,)?) => {
+        $children.push($crate::Component::progress($value) $( . $method ( $($args)* ) )+ );
+    };
+
+    ($children:ident, progress { value: $value:expr $(,)? }, $($tail:tt)*) => {
+        $children.push($crate::Component::progress($value));
+        $crate::parse_children!($children, $($tail)*);
+    };
+
+    ($children:ident, progress { value: $value:expr $(,)? } $(,)?) => {
+        $children.push($crate::Component::progress($value));
+    };
+
     ($children:ident, $child:expr, $($tail:tt)+) => {
         $children.push($child);
         $crate::parse_children!($children, $($tail)+);
@@ -284,6 +392,8 @@ macro_rules! asset_ref {
 ///     spacing: 8.0,
 ///     text { "Hello" },
 ///     button { text: "Click me", on_click: do_something() },
+///     text_input { placeholder: "Name" }.on_text_changed(|t| ..),
+///     checkbox { label: "Accept", checked: false }.on_checked_change(|c| ..),
 /// }
 /// ```
 #[macro_export]

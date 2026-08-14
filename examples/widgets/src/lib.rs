@@ -11,26 +11,25 @@ pub fn widgets_page() -> Component {
         direction: Vertical,
         spacing: 16,
 
-        Component::text_input("Type your name...")
+        text_input { placeholder: "Type your name..." }
             .on_text_changed(move |text| name = text),
 
-    
         text { "Hello, ", name }
             .color(Color::GRAY),
 
-        Component::checkbox("Accept terms", false)
+        checkbox { label: "Accept terms", checked: false }
             .on_checked_change(move |checked| accepted = checked),
 
         text { "Accepted: ", accepted }
             .color(Color::GRAY),
 
-        Component::switch(true)
+        switch { checked: true }
             .on_checked_change(move |checked| notifications = checked),
 
         text { "Notifications: ", notifications }
             .color(Color::GRAY),
 
-        Component::progress(move || loading)
+        progress { value: move || loading }
             .on_value_changed(move |value| loading = value),
 
         text { "Drag the bar above to set: ", loading }
