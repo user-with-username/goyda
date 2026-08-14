@@ -1,4 +1,5 @@
 mod compile;
+mod new;
 mod run;
 
 use crate::cli::{Cli, Cmd};
@@ -7,6 +8,8 @@ use anyhow::{bail, Result};
 
 pub fn run(cli: Cli) -> Result<()> {
     match cli.cmd {
+        Cmd::New { name, template, manifest_dir } => new::new(name, template, manifest_dir),
+        Cmd::Init { template, manifest_dir } => new::init(template, manifest_dir),
         Cmd::Compile { platform, target, manifest_dir, release } => match platform {
             Some(platform) => {
                 let platform_str = platform.as_str().to_string();

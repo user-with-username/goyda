@@ -13,6 +13,30 @@ pub struct Cli {
 
 #[derive(Subcommand)]
 pub enum Cmd {
+    /// Scaffold a new project into a new directory.
+    New {
+        /// Directory (and package) name to create.
+        name: String,
+
+        /// Starter template to scaffold from.
+        #[arg(long, default_value = "counter")]
+        template: String,
+
+        /// Directory the new project directory is created inside of.
+        #[arg(long, default_value = ".")]
+        manifest_dir: PathBuf,
+    },
+
+    /// Scaffold a new project into the current (or given) directory.
+    Init {
+        /// Starter template to scaffold from.
+        #[arg(long, default_value = "counter")]
+        template: String,
+
+        #[arg(long, default_value = ".")]
+        manifest_dir: PathBuf,
+    },
+
     /// Build the project. Without a platform, builds all implemented platforms.
     Compile {
         #[arg(value_parser = parse_platform)]

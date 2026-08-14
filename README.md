@@ -1,16 +1,50 @@
-# Goyda
+# goyda
 
-**One code to rule them all**
-**One code to bind them all**
-**One code to make them all run**
+A Rust UI toolkit that compiles the same app to Windows, Android, and web (wasm), with hot reload while you work.
 
-Goyda is cross-platform reactive UI framework written in rust
+```rust
+use goyda::prelude::{page, stack, Component, Color};
 
-> [!IMPORTANT]
-> Goyda is in the very early alpha testing. Not everything is stable
+#[page("/")]
+pub fn counter_page() -> Component {
+    let mut count = 0;
 
-## Why Goyda?
+    stack! {
+        direction: Vertical,
+        spacing: 16,
 
-- **No states or signals**: It's reactive, but you don't need to know anything about states. Proc-macro does all the dirty reactive work
-- **Looks native**: Instead of Flutter, Goyda calls JNI/WinApi/WASM directly from the rust code. No custom renderers
-- **Pure rust layout**: 
+        text { "Count: ", count }
+            .color(Color::GRAY),
+
+        button {
+            text: "+1",
+            on_click: count += 1,
+        }
+            .background(Color::GREEN)
+            .px(4)
+            .py(2)
+            .rounded(2)
+    }
+    .p(24)
+}
+```
+
+Install the CLI:
+
+```
+cargo install goyda-cli
+```
+
+Scaffold a project:
+
+```
+goy new my-app
+cd my-app
+goy run windows
+```
+
+`r` hot-reloads, `R` does a full reload, `q` quits.
+
+## License
+
+MIT
