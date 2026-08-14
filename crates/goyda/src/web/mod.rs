@@ -16,9 +16,6 @@ fn current_path() -> String {
         .unwrap_or_else(|| "/".to_string())
 }
 
-/// The DOM node goyda mounts the app's root component into. If the page's
-/// `index.html` has `<div id="app">`, goyda renders there; otherwise it
-/// falls back to `<body>` directly.
 fn mount_root() -> Result<web_sys::Element, JsValue> {
     let document = web_sys::window()
         .ok_or_else(|| JsValue::from_str("goyda(web): no global `window`"))?
@@ -37,20 +34,10 @@ fn mount_root() -> Result<web_sys::Element, JsValue> {
 }
 
 thread_local! {
-    /// The `WebBackend` and root DOM node stay fixed for the app's lifetime -
-    /// only the mounted component tree changes on navigation.
     static MOUNT: RefCell<Option<(WebBackend, web_sys::Element)>> = RefCell::new(None);
-    /// Kept (rather than `.forget()`-ten) so [`goyda_teardown`] can actually
-    /// remove it from `window` before a hot reload discards this module -
-    /// a `.forget()`-ten closure stays registered forever, and calling into
-    /// it after this module's instance is gone (the next `popstate`, e.g.
-    /// the user pressing the browser's back button) would reach into freed
-    /// wasm memory.
     static POPSTATE_CLOSURE: RefCell<Option<Closure<dyn Fn()>>> = RefCell::new(None);
 }
 
-/// Renders `page` and mounts it into the app's root, replacing whatever was
-/// there before. Used for both the initial load and every [`navigate`] call.
 fn render_page(page: &Page) {
     MOUNT.with(|cell| {
         let mut slot = cell.borrow_mut();
@@ -73,10 +60,8 @@ fn render_page(page: &Page) {
     });
 }
 
-/// Switches the mounted app to whichever `#[page(...)]` is registered for
-/// `path` (see [`crate::find_page`]), and updates the browser's URL bar via
-/// `history.pushState` so the address bar, reload, and share links all stay
-/// in sync with what's on screen.
+/// Navigates the app to the `#[page(...)]` registered for `path`, updating
+/// the browser's URL.
 pub fn navigate(path: &str) {
     let Some(page) = find_page(path) else {
         #[cfg(debug_assertions)]
@@ -95,29 +80,20 @@ pub fn navigate(path: &str) {
     render_page(page);
 }
 
-/// Re-renders whatever `#[page(...)]` matches the current URL - wired to the
-/// `popstate` event so the browser's back/forward buttons work like real
-/// navigation instead of leaving the on-screen page out of sync.
 fn handle_pop_state() {
     if let Some(page) = find_page(&current_path()) {
         render_page(page);
     }
 }
 
-/// Re-renders whatever `#[page(...)]` matches the current URL, in place -
-/// same route, no `pushState` call. Used by
-/// [`crate::core::theme::set_theme_mode`] so a runtime `theme!` switch
-/// shows up immediately.
+/// Rebuilds and redisplays the currently mounted page in place, without
+/// changing the route.
 pub fn rerender() {
     if let Some(page) = find_page(&current_path()) {
         render_page(page);
     }
 }
 
-/// Reads the `(prefers-color-scheme: dark)` media query to seed the initial
-/// [`crate::core::theme::ThemeMode`] from whatever the browser/OS is
-/// actually set to - see `crate::core::theme`'s doc comment for how this
-/// plugs into `theme!`.
 fn detect_theme_mode() -> crate::core::theme::ThemeMode {
     let prefers_dark = web_sys::window()
         .and_then(|w| w.match_media("(prefers-color-scheme: dark)").ok().flatten())
@@ -131,16 +107,9 @@ fn detect_theme_mode() -> crate::core::theme::ThemeMode {
     }
 }
 
-/// The app's real entry point - called explicitly from `index.html`'s
-/// bootstrap script (see `goyda-cli`'s web target) right after the wasm
-/// module finishes instantiating, rather than via wasm-bindgen's
-/// `#[wasm_bindgen(start)]` auto-invoke: a hot reload needs [`goyda_install_state`]
-/// to run *between* instantiation and the first page mount (so
-/// `Signal::new_keyed` sees restored values from the very first render),
-/// and `#[wasm_bindgen(start)]` gives JS no chance to call anything in that
-/// gap - it fires synchronously as part of instantiation itself. An
-/// ordinary (non-reload) first load just calls this with nothing to
-/// install, which is exactly today's behavior.
+/// Starts the app: mounts the initial `#[page(...)]` for the current URL
+/// and sets up back/forward navigation. Called once from JS after the wasm
+/// module loads.
 #[wasm_bindgen]
 pub fn goyda_start() -> Result<(), JsValue> {
     console_error_panic_hook::set_once();
@@ -166,30 +135,22 @@ pub fn goyda_start() -> Result<(), JsValue> {
     Ok(())
 }
 
-/// JS-exposed wrapper around [`crate::reactive::dump_state`] - see that
-/// function's doc comment. Called on the *old* module right before a hot
-/// reload discards it.
+/// Snapshots the app's reactive state as JSON, for restoring with
+/// [`goyda_install_state`] after a hot reload.
 #[wasm_bindgen]
 pub fn goyda_dump_state() -> String {
     crate::reactive::dump_state()
 }
 
-/// JS-exposed wrapper around [`crate::reactive::install_state`] - called on
-/// the *new* module, before [`goyda_start`], with whatever
-/// [`goyda_dump_state`] returned from the module it's replacing.
+/// Restores reactive state previously captured with [`goyda_dump_state`].
+/// Call before [`goyda_start`].
 #[wasm_bindgen]
 pub fn goyda_install_state(json: String) {
     crate::reactive::install_state(&json);
 }
 
-/// Removes the `popstate` listener [`goyda_start`] registered - called on
-/// the *old* module right before a hot reload discards it, so the browser
-/// never calls back into this (about to be freed) module's memory. Only
-/// `popstate` needs this: every other listener in this backend is attached
-/// to an individual rendered DOM node (see `web/backend.rs`), which stops
-/// receiving events the moment [`render_page`] replaces it - `window`
-/// itself isn't torn down by a hot reload, so anything attached directly to
-/// it needs explicit cleanup.
+/// Detaches the app's browser event listeners. Call before discarding the
+/// wasm module, e.g. ahead of a hot reload.
 #[wasm_bindgen]
 pub fn goyda_teardown() {
     let Some(window) = web_sys::window() else { return };

@@ -1,16 +1,11 @@
-/// A reference to a file the project ships under its `assets/` directory
-/// (images, fonts, ...). `path` is relative to that directory, e.g.
-/// `"logo.png"` or `"fonts/Inter-Bold.ttf"` - a leading slash is stripped
-/// and backslashes are normalized, since every backend resolves it relative
-/// to wherever it packages or serves assets from (the APK's `assets/` zip
-/// entry, the web build's `assets/` directory, ...).
+/// A reference to a file under the project's `assets/` directory, such as an
+/// image or a font.
 ///
-/// An `Asset` can either carry its file's bytes inline (`bytes` is `Some`,
-/// produced by the `asset!` macro via `include_bytes!`) or defer to `path`
-/// alone (produced by `asset_ref!` or a plain string, resolved by each
-/// backend at runtime from wherever it packages/serves assets). Backends
-/// prefer `bytes` when present since it needs no platform-specific
-/// filesystem/network access at all.
+/// ```
+/// # use goyda_utils::Asset;
+/// let logo = Asset::new("logo.png");
+/// assert_eq!(logo.path(), "logo.png");
+/// ```
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Asset {
     path: String,
@@ -18,12 +13,13 @@ pub struct Asset {
 }
 
 impl Asset {
+    /// Creates an asset reference from a path relative to `assets/`.
     pub fn new(path: impl Into<String>) -> Self {
         Self { path: normalize(path.into()), bytes: None }
     }
 
-    /// Builds an asset whose content is already embedded in the binary.
-    /// Used by the `asset!` macro - not usually called directly.
+    /// Creates an asset whose file content is embedded in the binary.
+    /// Typically produced by the `asset!` macro rather than called directly.
     pub fn embedded(path: impl Into<String>, bytes: &'static [u8]) -> Self {
         Self { path: normalize(path.into()), bytes: Some(bytes) }
     }
@@ -33,9 +29,7 @@ impl Asset {
         &self.path
     }
 
-    /// The asset's embedded content, if `asset!` produced it. `None` for
-    /// path-only assets (`asset_ref!`, or a plain string), which backends
-    /// resolve at runtime instead.
+    /// The asset's embedded file content, if any.
     pub fn bytes(&self) -> Option<&'static [u8]> {
         self.bytes
     }
@@ -65,9 +59,8 @@ pub fn extension(asset: &Asset) -> Option<String> {
         .map(|e| e.to_lowercase())
 }
 
-/// The CSS `format()` hint for a font asset's `@font-face src`, based on its
-/// file extension. `None` for unrecognized extensions - the browser will
-/// still try to sniff the format itself.
+/// The CSS `format()` hint for a font asset's `@font-face src`. `None` if
+/// the asset's extension isn't a recognized font format.
 pub fn font_format_hint(asset: &Asset) -> Option<&'static str> {
     match extension(asset)?.as_str() {
         "ttf" => Some("truetype"),
@@ -78,10 +71,8 @@ pub fn font_format_hint(asset: &Asset) -> Option<&'static str> {
     }
 }
 
-/// The MIME type for an asset's content, based on its file extension. Needed
-/// wherever an asset's bytes are handed to a platform API that doesn't sniff
-/// the format itself (e.g. constructing a web `Blob`) - without it, an SVG's
-/// bytes are indistinguishable from arbitrary binary data and won't render.
+/// The MIME type for an asset's content, based on its file extension. `None`
+/// for unrecognized extensions.
 pub fn mime_type(asset: &Asset) -> Option<&'static str> {
     match extension(asset)?.as_str() {
         "svg" => Some("image/svg+xml"),
@@ -97,9 +88,7 @@ pub fn mime_type(asset: &Asset) -> Option<&'static str> {
     }
 }
 
-/// Whether the asset's file extension is `.svg` - the one image format that
-/// platform raster decoders (Android's `BitmapFactory`) can't handle
-/// natively and needs rasterizing first.
+/// Whether the asset's file extension is `.svg`.
 pub fn is_svg(asset: &Asset) -> bool {
     extension(asset).as_deref() == Some("svg")
 }

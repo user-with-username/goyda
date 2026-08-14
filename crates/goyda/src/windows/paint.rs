@@ -14,9 +14,6 @@ fn text_align_flag(align: Align) -> u32 {
     }
 }
 
-/// The color that would show through if `hwnd` had no background of its
-/// own - the nearest ancestor's `background_color`, or plain white if none
-/// of them set one either.
 fn ancestor_background(hwnd: HWND) -> COLORREF {
     let mut current = unsafe { GetParent(hwnd) };
     while !current.is_null() {

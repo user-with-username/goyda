@@ -33,14 +33,10 @@ fn create_font(height: i32, face: &str, bold: bool, italic: bool, underline: boo
     }
 }
 
-/// The default UI font at a given pixel size (normal weight, upright),
-/// cached per size. Equivalent to `styled_font(size_px, false, false, false, false)`.
 pub fn default_font(size_px: i32) -> HFONT {
     styled_font(size_px, false, false, false, false)
 }
 
-/// The default UI font at a given pixel size/weight/slant/decoration,
-/// cached per `(size, bold, italic, underline, strikethrough)` combination.
 pub fn styled_font(size_px: i32, bold: bool, italic: bool, underline: bool, strikethrough: bool) -> HFONT {
     DEFAULT_FONTS.with(|cache| {
         *cache
@@ -50,12 +46,6 @@ pub fn styled_font(size_px: i32, bold: bool, italic: bool, underline: bool, stri
     })
 }
 
-/// Registers `bytes` as a private, in-process font (via
-/// `AddFontMemResourceEx`) and returns an `HFONT` at `size_px` using
-/// whatever family name is embedded in the font's own `name` table -
-/// callers never need to know or guess that name themselves, matching how
-/// `Typeface.Builder(byte[])` (Android) and a `Blob` `@font-face` (web) both
-/// build a usable font directly from bytes with no separate lookup step.
 pub fn font_from_bytes(bytes: &[u8], size_px: i32) -> Option<HFONT> {
     let family = parse_family_name(bytes)?;
 
@@ -76,9 +66,6 @@ pub fn font_from_bytes(bytes: &[u8], size_px: i32) -> Option<HFONT> {
     Some(font)
 }
 
-/// Minimal TTF/OTF `name` table parser - just enough to pull out the
-/// Windows-platform Family Name (`nameID` 1) record, so an embedded font's
-/// bytes are self-describing and don't need a name supplied alongside them.
 fn parse_family_name(data: &[u8]) -> Option<String> {
     let u16_at = |o: usize| -> Option<u16> { Some(u16::from_be_bytes([*data.get(o)?, *data.get(o + 1)?])) };
     let u32_at = |o: usize| -> Option<u32> {

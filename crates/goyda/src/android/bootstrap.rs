@@ -1,11 +1,5 @@
-//! The app's single native entry point. Unlike the web target (where
-//! `#[wasm_bindgen(start)]` can be attached once per `#[page(...)]` function
-//! harmlessly, since only the module the browser actually loads matters),
-//! Android needs exactly one `JNI_OnLoad`/`nativeInit` pair per app - two
-//! `#[page(...)]` functions each emitting their own would collide at link
-//! time. So this lives here, built once regardless of how many pages a
-//! consumer crate registers, and picks the initial page to render from the
-//! `Page` inventory (see [`crate::find_page`]) instead of hardcoding one.
+//! The app's native entry point and its navigation functions
+//! ([`navigate`], [`rerender`]).
 
 use std::ffi::c_void;
 
@@ -20,16 +14,9 @@ use crate::android::{AndroidBridge, BRIDGE};
 use crate::core::theme::{init_theme_mode, ThemeMode};
 use crate::find_page;
 
-/// `Configuration.UI_MODE_NIGHT_MASK`/`UI_MODE_NIGHT_YES` - stable,
-/// long-frozen platform constants, so hardcoding them here is simpler than
-/// a JNI static-field lookup for values that never change.
 const UI_MODE_NIGHT_MASK: i32 = 0x30;
 const UI_MODE_NIGHT_YES: i32 = 0x20;
 
-/// Reads `Context.getResources().getConfiguration().uiMode` to seed the
-/// initial [`ThemeMode`] from whatever the device (or the app's own
-/// requested night-mode override) is actually set to - see
-/// `crate::core::theme`'s doc comment for how this plugs into `theme!`.
 fn detect_theme_mode(env: &mut JNIEnv, context: &JObject) -> ThemeMode {
     let resources = jcall!(env, context, "getResources", (() -> "android/content/res/Resources"), []);
     let Ok(resources) = resources.and_then(|r| r.l()) else { return ThemeMode::Light };
@@ -46,24 +33,6 @@ fn detect_theme_mode(env: &mut JNIEnv, context: &JObject) -> ThemeMode {
     }
 }
 
-/// Wraps `content` (a page's already-rendered root `View`) in a vertically
-/// scrolling `ScrollView`, so a page taller than the screen scrolls instead
-/// of silently clipping at the bottom edge - the built-in
-/// `Component::scroll_view` isn't reused here since its children loop sizes
-/// each child `WRAP_CONTENT` and center-gravity (meant for a scrollable
-/// *list* of independently-sized items), which would shrink a full-width
-/// page down to its narrowest natural width instead of keeping it filling
-/// the screen; `content` keeps `MATCH_PARENT` width here and only trades
-/// `MATCH_PARENT` height for `WRAP_CONTENT`, since only *that* lets it grow
-/// past the viewport for the `ScrollView` to scroll over.
-///
-/// `WRAP_CONTENT` cuts both ways though: a page *shorter* than the screen
-/// now only paints its own background over its own (short) height, leaving
-/// the `ScrollView`'s unstyled remainder showing through as a plain black/
-/// white band underneath - `setFillViewport(true)` is the standard fix,
-/// stretching `content` to fill the viewport whenever its natural height
-/// is the smaller one, while still leaving it free to grow past the
-/// viewport (and scroll) whenever its natural height is the bigger one.
 fn wrap_scrollable<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, content: JObject<'a>) -> JObject<'a> {
     let content_params = jnew!(env, "android/widget/FrameLayout$LayoutParams", ((int, int) -> void), [JValue::Int(-1), JValue::Int(-2)]);
     jcall!(env, &content, "setLayoutParams", (("android/view/ViewGroup$LayoutParams") -> void), [JValue::Object(&content_params)]).unwrap();
@@ -76,11 +45,6 @@ fn wrap_scrollable<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, content: JOb
     scroll_view
 }
 
-/// Renders `page` into `bridge`'s root, replacing whatever was mounted
-/// before - the shared body of [`navigate`], [`native_back`], and
-/// [`rerender`], which differ only in how they get to "here's the page to
-/// show" (a new route, a popped back-stack entry, or the same route again
-/// after a `theme!` change).
 fn swap_page(env: &mut JNIEnv, bridge: &mut AndroidBridge, page: &crate::Page) {
     let context = env.new_local_ref(bridge.context.as_obj()).expect("local ref failed");
     let component = (page.factory)();
@@ -130,9 +94,7 @@ fn native_init(mut env: JNIEnv, _class: JClass, root: JObject) {
     let _ = BRIDGE.set(std::sync::Mutex::new(bridge));
 }
 
-/// Switches the mounted app to whichever `#[page(...)]` is registered for
-/// `path` (see [`crate::find_page`]), replacing the root `ViewGroup`'s
-/// children with the newly rendered page.
+/// Navigates the app to the `#[page(...)]` registered for `path`.
 pub fn navigate(path: &str) {
     let Some(page) = find_page(path) else {
         #[cfg(debug_assertions)]
@@ -151,14 +113,6 @@ pub fn navigate(path: &str) {
     bridge.back_stack.push(previous_path);
 }
 
-/// Pops the in-app back stack built up by [`navigate`] and re-renders
-/// whichever page was on top of it, the same way the browser's back button
-/// re-renders on `popstate` for the web target (see `crate::web::mod`) -
-/// Android has no OS-level page stack of its own to lean on (single
-/// `Activity`, no fragment back stack), so `MainActivity`'s `onBackPressed`
-/// calls this via `nativeBack` instead. Returns `false` when the stack is
-/// empty so the caller falls back to the platform default (finishing the
-/// `Activity`).
 fn native_back(mut env: JNIEnv, _this: JObject) -> jboolean {
     let Some(bridge_lock) = BRIDGE.get() else { return JNI_FALSE };
     let mut bridge = bridge_lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -172,9 +126,8 @@ fn native_back(mut env: JNIEnv, _this: JObject) -> jboolean {
     JNI_TRUE
 }
 
-/// Re-renders whichever page is currently mounted, in place - no route
-/// change, no back-stack entry. Used by [`crate::core::theme::set_theme_mode`]
-/// so a runtime `theme!` switch shows up immediately.
+/// Rebuilds and redisplays the currently mounted page in place, without
+/// changing the route.
 pub fn rerender() {
     let Some(jvm) = JVM.get() else { return };
     let Ok(mut env) = jvm.attach_current_thread() else { return };
@@ -185,18 +138,6 @@ pub fn rerender() {
     swap_page(&mut env, &mut bridge, page);
 }
 
-/// Re-renders the currently mounted route after a hot-reload swap - called
-/// from `HotReloadSwapReceiver.onReceive` (see `goyda-cli`'s android
-/// target), right after it calls `System.load(...)` on a freshly rebuilt
-/// generation of the consumer's `.so` (see `goyda::android::bootstrap`'s
-/// module doc comment and `AndroidTarget::quick_reload` for the sending
-/// half). No route change, no back-stack entry, same as [`rerender`] -
-/// [`find_page`] already sees the newly loaded generation's
-/// `#[page(...)]`s by the time this runs, since `inventory`'s registry
-/// lives in `libgoyda.so` (loaded once, shared by every generation via `-C
-/// prefer-dynamic` - see `goyda-cli`'s android `native.rs`) and the new
-/// generation's `inventory::submit!` ctors already ran as a side effect of
-/// `System.load` itself.
 fn native_hot_swap(mut env: JNIEnv, _this: JObject) {
     let Some(bridge_lock) = BRIDGE.get() else { return };
     let mut bridge = bridge_lock.lock().unwrap_or_else(|e| e.into_inner());
@@ -205,12 +146,9 @@ fn native_hot_swap(mut env: JNIEnv, _this: JObject) {
     swap_page(&mut env, &mut bridge, page);
 }
 
-/// Finds the Java/Kotlin class that called into native code (by walking the
-/// current thread's stack trace and skipping framework frames) and
-/// dynamically registers `native_init` on it as `nativeInit`. Avoids
-/// requiring consumer apps to know or declare the native method signature
-/// themselves - `Goyda.java`'s `nativeInit(ViewGroup)` call is all that's
-/// needed on the Java side.
+/// The JNI entry point loaded automatically when the native library is
+/// loaded on Android; registers the app's native methods. Not called
+/// directly by app code.
 #[unsafe(no_mangle)]
 pub extern "C" fn JNI_OnLoad(vm: JavaVM, _: *mut c_void) -> jint {
     let vm_ptr = vm.get_java_vm_pointer();

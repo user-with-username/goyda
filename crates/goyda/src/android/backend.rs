@@ -11,17 +11,9 @@ use std::rc::Rc;
 use std::sync::{Arc, Mutex};
 use once_cell::sync::{Lazy, OnceCell};
 
+/// The Android app's Java VM handle, set once at startup.
 pub static JVM: OnceCell<JavaVM> = OnceCell::new();
 
-/// Group name -> every `RadioButton` created with that group - no native
-/// "radio group" container exists in this backend (standalone
-/// `android.widget.RadioButton`s don't auto-exclude each other the way
-/// children of a real `RadioGroup` do), so mutual exclusion is done by
-/// hand: selecting one unchecks every other entry in the same `Vec` (see
-/// `select_radio` below). `Arc<GlobalRef>` (not a fresh JNI local/global
-/// ref per lookup) so identifying "is this the one that got clicked" is
-/// just a pointer comparison (`Arc::ptr_eq`), no JNI object-identity call
-/// needed.
 static RADIO_GROUPS: Lazy<Mutex<HashMap<String, Vec<Arc<GlobalRef>>>>> = Lazy::new(|| Mutex::new(HashMap::new()));
 
 fn register_radio(group: &str, view: &AndroidView) {
@@ -50,8 +42,6 @@ fn resolve_color(value: &StyleValue) -> Option<i32> {
     }
 }
 
-/// Android pixel-density scaling on top of the shared, unscaled length
-/// resolution in `goyda-utils`.
 fn resolve_length(value: &StyleValue) -> Option<i32> {
     let v = goyda_utils::style::resolve_length(value);
     if v.is_none() {
@@ -90,15 +80,6 @@ fn apply_text_color(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
     env.call_method(view, "setTextColor", sig!((int) -> void), &[JValue::Int(c)]).unwrap();
 }
 
-/// `TextView`/`EditText` inherit their color from `Theme.DeviceDefault`
-/// (see `AndroidManifest.xml`), which on most real devices is the dark
-/// variant - white text - while every text-bearing component here gets an
-/// explicit white/light background unless styled otherwise, so leaving text
-/// color to the theme renders invisible white-on-white. `apply_text_color`
-/// above still wins whenever a component's own style sets `TextColor`
-/// (`apply_style` runs after creation), so this is only the fallback for
-/// components that don't - matches the windows backend's own default (see
-/// `state.text_color.unwrap_or(0x0000_0000)` in `windows/paint.rs`).
 const DEFAULT_TEXT_COLOR: i32 = 0xFF00_0000u32 as i32;
 
 fn set_default_text_color(env: &mut JNIEnv, view: &JObject) {
@@ -295,11 +276,6 @@ fn apply_height(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
     set_layout_dimension(env, view, "height", v);
 }
 
-/// `Typeface.BOLD`/`Typeface.ITALIC`/`Typeface.BOLD_ITALIC` are bit flags
-/// (1/2/3), so `Axis::FontWeight`/`Axis::FontStyle` (applied as two
-/// independent style properties) read the view's *current* typeface style
-/// first and flip only their own bit, instead of clobbering whichever one
-/// was set first.
 fn current_typeface_style(env: &mut JNIEnv, view: &JObject) -> i32 {
     env.call_method(view, "getTypeface", sig!(() -> "android/graphics/Typeface"), &[])
         .ok()
@@ -375,10 +351,6 @@ fn vertical_gravity(align: Align) -> i32 {
     }
 }
 
-/// `AlignItems`/`JustifyContent` only make sense on a `Stack` (a
-/// `LinearLayout`) - `getOrientation` fails harmlessly (`None`, so these
-/// become no-ops) on any other view, which is the only signal available
-/// here for "is this actually a `Stack`".
 fn stack_orientation(env: &mut JNIEnv, view: &JObject) -> Option<i32> {
     env.call_method(view, "getOrientation", sig!(() -> int), &[]).ok()?.i().ok()
 }
@@ -387,11 +359,6 @@ fn current_gravity(env: &mut JNIEnv, view: &JObject) -> i32 {
     env.call_method(view, "getGravity", sig!(() -> int), &[]).ok().and_then(|r| r.i().ok()).unwrap_or(0)
 }
 
-/// The `LinearLayout`'s single `gravity` int packs both axes into one
-/// value, so cross/main-axis alignment (`AlignItems`/`JustifyContent`) has
-/// to read-modify-write only its own axis's bits (`GRAVITY_HORIZONTAL_MASK`/
-/// `GRAVITY_VERTICAL_MASK`) - same reasoning as
-/// [`current_typeface_style`]/[`set_typeface_style`] above.
 fn apply_align_items(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
     let StyleValue::Align(align) = value else { return; };
     let Some(orientation) = stack_orientation(env, view) else { return; };
@@ -416,10 +383,6 @@ fn apply_justify_content(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
     let _ = env.call_method(view, "setGravity", sig!((int) -> void), &[JValue::Int(updated)]);
 }
 
-/// Reads an asset's full content from `AssetManager` into memory. Needed
-/// (rather than handing the `InputStream` straight to `BitmapFactory`) for
-/// SVGs, which have to be rasterized in Rust before Android's raster-only
-/// `BitmapFactory` can turn them into a `Bitmap`.
 fn read_asset_bytes(env: &mut JNIEnv, context: &JObject, path: &str) -> Option<Vec<u8>> {
     let asset_manager = env
         .call_method(context, "getAssets", sig!(() -> "android/content/res/AssetManager"), &[])
@@ -465,8 +428,6 @@ fn read_asset_bytes(env: &mut JNIEnv, context: &JObject, path: &str) -> Option<V
     Some(buf.into_iter().map(|b| b as u8).collect())
 }
 
-/// Rasterizes SVG source into premultiplied RGBA8 pixels, sized to the
-/// SVG's intrinsic size (rounded up to whole pixels).
 fn rasterize_svg(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     let tree = resvg::usvg::Tree::from_data(bytes, &resvg::usvg::Options::default()).ok()?;
     let size = tree.size();
@@ -480,9 +441,6 @@ fn rasterize_svg(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     Some((width, height, pixmap.data().to_vec()))
 }
 
-/// Builds an `ARGB_8888` `Bitmap` from premultiplied RGBA8 pixel bytes (the
-/// format both `tiny_skia::Pixmap` and Android's `Bitmap.copyPixelsFromBuffer`
-/// use, so the buffer copies straight across with no per-pixel conversion).
 fn create_bitmap_from_rgba<'a>(env: &mut JNIEnv<'a>, width: u32, height: u32, rgba: &[u8]) -> Option<JObject<'a>> {
     let config_class = env.find_class("android/graphics/Bitmap$Config").ok()?;
     let argb_8888 = env
@@ -517,9 +475,6 @@ fn create_bitmap_from_rgba<'a>(env: &mut JNIEnv<'a>, width: u32, height: u32, rg
     Some(bitmap)
 }
 
-/// Decodes `bytes` into a `Bitmap` - rasterizing first if `asset` is an SVG
-/// (which `BitmapFactory` can't decode natively), otherwise handing the raw
-/// bytes straight to `BitmapFactory.decodeByteArray`.
 fn decode_bitmap_bytes<'a>(env: &mut JNIEnv<'a>, asset: &Asset, bytes: &[u8]) -> Option<JObject<'a>> {
     if goyda_utils::asset::is_svg(asset) {
         let (width, height, rgba) = rasterize_svg(bytes)?;
@@ -544,9 +499,6 @@ fn load_asset_bitmap<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, asset: &As
     decode_bitmap_bytes(env, asset, &bytes)
 }
 
-/// Builds a `Typeface` straight from embedded bytes via `Typeface.Builder`
-/// (API 26+) - no `AssetManager` lookup needed since the content already
-/// lives in the binary.
 fn build_typeface_bytes<'a>(env: &mut JNIEnv<'a>, bytes: &[u8]) -> Option<JObject<'a>> {
     let array = env.byte_array_from_slice(bytes).ok()?;
     let builder = env
@@ -558,10 +510,6 @@ fn build_typeface_bytes<'a>(env: &mut JNIEnv<'a>, bytes: &[u8]) -> Option<JObjec
         .ok()
 }
 
-/// `Axis::FontFamily` isn't a [`StyleApplier`] in [`STYLE_REGISTRY`] because
-/// loading a font asset needs [`AndroidBackend::context`] (for
-/// `AssetManager`), which that registry's function pointers don't carry -
-/// `apply_style` special-cases it instead, where `self.context` is in scope.
 fn apply_font_family<'a>(env: &mut JNIEnv<'a>, context: &JObject<'a>, view: &JObject<'a>, asset: &Asset) {
     let typeface = if let Some(bytes) = asset.bytes() {
         build_typeface_bytes(env, bytes)
@@ -650,12 +598,6 @@ fn apply_ellipsis(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
     let _ = env.call_method(view, "setEllipsize", sig!(("android/text/TextUtils$TruncateAt") -> void), &[JValue::Object(&end_obj)]);
 }
 
-/// See [`Axis::Clip`]'s doc comment - `true` (the only value `.clip()`
-/// ever produces) clips this view's children to its own bounds, which is
-/// already `ViewGroup`'s default; the interesting direction
-/// (`setClipChildren(false)`, opt out of the default clip) has no
-/// `Component` builder method yet, so this stays a one-way no-op-in-
-/// practice knob for parity with the other two backends' `Axis::Clip`.
 fn apply_clip(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
     let StyleValue::Bool(clip) = value else { return; };
     let _ = env.call_method(view, "setClipChildren", sig!((boolean) -> void), &[JValue::Bool(*clip as u8)]);
@@ -681,16 +623,6 @@ fn apply_shadow_color(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
     let _ = env.call_method(view, "setOutlineAmbientShadowColor", sig!((int) -> void), &[JValue::Int(c)]);
 }
 
-/// Only meaningful on a direct child of an [`Overlay`](crate::components::Overlay)
-/// - stashed as a `leftMargin`/`topMargin` on whatever `LayoutParams` the
-/// child currently has (set at creation time, e.g.
-/// `LinearLayout$LayoutParams`) purely as a carrier, since nothing else
-/// reads margins on an about-to-be-reparented overlay child. `create_overlay`
-/// (see below) reads them back and builds a fresh `FrameLayout$LayoutParams`
-/// from them when it reparents each child - so combining `.offset(...)`
-/// with a real `.margin(...)` (via `Axis::Margin`) on the same `Overlay`
-/// child isn't supported (whichever style applies last wins the shared
-/// slot).
 fn apply_offset_x(env: &mut JNIEnv, view: &JObject, value: &StyleValue) {
     let Some(v) = resolve_length(value) else { return; };
     set_layout_margin(env, view, "leftMargin", v);
@@ -750,18 +682,21 @@ fn build_style_registry() -> HashMap<Axis, StyleApplier> {
 
 static STYLE_REGISTRY: Lazy<HashMap<Axis, StyleApplier>> = Lazy::new(build_style_registry);
 
+/// A handle to a mounted view on Android.
 #[derive(Clone)]
 pub struct AndroidView {
     pub global_ref: Arc<GlobalRef>,
 }
 
 impl AndroidView {
+    /// Returns a local JNI reference to the underlying `View`.
     pub fn as_jobject<'a>(&self, env: &mut JNIEnv<'a>) -> JObject<'a> {
         env.new_local_ref(self.global_ref.as_obj())
             .expect("Failed to create local ref")
     }
 }
 
+/// Applies reactive updates to views on Android.
 #[derive(Clone)]
 pub struct AndroidUpdater;
 
@@ -789,12 +724,14 @@ impl BackendUpdater for AndroidUpdater {
     }
 }
 
+/// The Android rendering backend, mounting components as native `View`s.
 pub struct AndroidBackend<'a, 'b> {
     pub env: &'a mut JNIEnv<'b>,
     pub context: &'a JObject<'b>,
 }
 
 impl<'a, 'b> AndroidBackend<'a, 'b> {
+    /// Creates a backend that mounts views against `context`.
     pub fn new(env: &'a mut JNIEnv<'b>, context: &'a JObject<'b>) -> Self {
         Self { env, context }
     }

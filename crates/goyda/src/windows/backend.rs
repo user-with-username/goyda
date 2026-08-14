@@ -13,9 +13,6 @@ use super::layout;
 use super::state::{self, ControlKind, ControlState, Edges};
 
 const DEFAULT_FONT_SIZE: i32 = 16;
-/// A default inset for buttons, matching the android backend's own
-/// clickable-default-padding constant - without it a button sized to its
-/// bare text extent would be uncomfortably small to click.
 const BUTTON_PADDING: Edges = Edges { left: 16, top: 10, right: 16, bottom: 10 };
 
 fn wide(s: &str) -> Vec<u16> {
@@ -42,11 +39,13 @@ fn measure_text_with_spacing(text: &str, font: HFONT, letter_spacing: i32) -> (i
     }
 }
 
+/// A handle to a mounted control on Windows.
 #[derive(Clone, Copy)]
 pub struct WindowsView {
     pub hwnd: HWND,
 }
 
+/// Applies reactive updates to controls on Windows.
 #[derive(Clone)]
 pub struct WindowsUpdater;
 
@@ -77,9 +76,6 @@ impl BackendUpdater for WindowsUpdater {
     }
 }
 
-/// Minimum width for an empty [`ControlKind::TextInput`] - without it, a
-/// freshly-created field with no placeholder/text would measure to zero
-/// width and be invisible.
 const TEXT_INPUT_MIN_WIDTH: i32 = 150;
 const TEXTAREA_MIN_WIDTH: i32 = 250;
 const TEXTAREA_MIN_HEIGHT: i32 = 80;
@@ -123,12 +119,6 @@ fn invalidate(hwnd: HWND) {
     }
 }
 
-/// Built-in click-to-toggle for [`ControlKind::Checkbox`]/[`ControlKind::Switch`],
-/// matching what a real `<input type=checkbox>`/Android `CheckBox`/`Switch`
-/// already does for free on the other two backends - independent of whether
-/// the app attaches `.on_checked_change(...)`, which only needs to *observe*
-/// this (see `crate::listeners`'s `checked_change` arm and
-/// [`crate::windows::is_self_toggling`]).
 fn register_click_to_toggle(hwnd: HWND) {
     state::register_raw_hook(hwnd, std::rc::Rc::new(move |msg, _wparam, _lparam| {
         if msg == WM_LBUTTONUP {
@@ -137,12 +127,15 @@ fn register_click_to_toggle(hwnd: HWND) {
     }));
 }
 
+/// The Windows rendering backend, mounting components as native `HWND`
+/// controls under `parent`.
 pub struct WindowsBackend {
     pub hinstance: HINSTANCE,
     pub parent: HWND,
 }
 
 impl WindowsBackend {
+    /// Creates a backend that mounts controls as children of `parent`.
     pub fn new(hinstance: HINSTANCE, parent: HWND) -> Self {
         Self { hinstance, parent }
     }
@@ -179,10 +172,6 @@ impl WindowsBackend {
         WindowsView { hwnd }
     }
 
-    /// Shared by `create_stack`/`create_scroll_view` - `kind` (already
-    /// built with `children`'s `HWND`s) picks which of the two, everything
-    /// else (reparenting, measuring the content-sized extent, delegating
-    /// actual child positions to `relayout`) is identical between them.
     fn build_stack_control(&mut self, kind: ControlKind, direction: LayoutDirection, spacing: i32, children: Vec<WindowsView>) -> WindowsView {
         let panel = self.create_control(kind);
 
@@ -217,9 +206,6 @@ impl WindowsBackend {
         panel
     }
 
-    /// Shared by `create_text_input`/`create_textarea` - `multiline` picks
-    /// between the two, everything else (click-to-focus, character
-    /// accumulation/backspace) is identical.
     fn build_text_input(&mut self, placeholder: &str, initial_text: &str, multiline: bool) -> WindowsView {
         let view = self.create_control(ControlKind::TextInput { text: initial_text.to_string(), placeholder: placeholder.to_string(), multiline });
         state::with_state(view.hwnd, |s| {

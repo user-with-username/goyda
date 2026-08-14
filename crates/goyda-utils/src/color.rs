@@ -1,5 +1,10 @@
-/// Semantic color palette shared by every backend. `Custom` carries a raw
-/// `0xAARRGGBB` value for anything outside the named set.
+/// A named color from the theme's palette, or a custom `0xAARRGGBB` value.
+///
+/// ```
+/// # use goyda_utils::Color;
+/// let c = Color::PRIMARY;
+/// let custom = Color::Custom(0xFF112233);
+/// ```
 #[derive(Debug, Clone, Copy)]
 pub enum Color {
     PRIMARY,
@@ -17,10 +22,7 @@ pub enum Color {
     Custom(u32),
 }
 
-/// Resolves a [`Color`] to its canonical `0xAARRGGBB` value - the single
-/// source of truth every backend's platform-specific color representation
-/// (Android's signed 32-bit `int`, the web's `rgba(...)` string, ...) is
-/// derived from.
+/// Resolves a [`Color`] to its `0xAARRGGBB` value.
 pub fn argb(color: Color) -> u32 {
     match color {
         Color::PRIMARY => 0xFF6200EE,

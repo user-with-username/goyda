@@ -1,3 +1,6 @@
+/// Converts a value (including a [`Signal`](crate::reactive::Signal) or
+/// [`Memo`](crate::reactive::Memo)) to the `String` it should render as
+/// inside `text { ... }` blocks.
 pub trait IntoString {
     fn to_string_reactive(&self) -> String;
 }
@@ -14,23 +17,14 @@ impl<T: std::fmt::Display + Copy + 'static> IntoString for crate::reactive::Memo
     fn to_string_reactive(&self) -> String { format!("{}", self.get()) }
 }
 
-/// Declares any number of named theme variants and a set of colors with one
-/// value per variant, as callable functions - not just light/dark, though
-/// the first two variants should still be a light-equivalent and a
-/// dark-equivalent one (in that order), since that's what OS theme
-/// detection seeds the initial index from (see each platform's
-/// `detect_theme_mode`).
+/// Declares a set of named theme variants and the colors that vary between
+/// them. The first two variants should be a light and a dark equivalent, in
+/// that order, so OS theme detection picks a sensible default.
 ///
-/// Each variant name becomes a `pub const $name: usize` (its declaration
-/// order), and each color becomes `pub fn $name() -> Color`, resolving to
-/// whichever variant matches [`crate::core::theme::theme_index()`] *at
-/// call time* (so plain `const`s can't do this - the active theme can
-/// change while the app is running). The macro also generates a
-/// `next_theme()` function that cycles through every declared variant and
-/// rerenders the current page, the ergonomic entry point most apps want
-/// (`on_click: next_theme()`) - reach for
-/// [`crate::core::theme::set_theme`] directly (e.g. `set_theme(Dark)`)
-/// instead if jumping straight to one variant instead of cycling.
+/// Each color becomes a function (e.g. `COLOR_PRIMARY()`) returning the
+/// value for whichever variant is currently active, and a `next_theme()`
+/// function is generated for cycling between variants. To jump to a
+/// specific variant instead, use [`crate::set_theme`].
 ///
 /// ```ignore
 /// theme! {
@@ -54,9 +48,9 @@ macro_rules! theme {
         #[allow(dead_code)]
         const __THEME_VARIANT_COUNT: usize = [$(stringify!($variant)),+].len();
 
-        /// Cycles to the next theme this block declared (wrapping back to
-        /// the first after the last) and rerenders the current page - see
-        /// the `theme!` macro's own doc comment.
+        /// Switches to the next theme variant declared by [`theme!`],
+        /// wrapping around after the last one, and rerenders the current
+        /// page.
         pub fn next_theme() {
             $crate::core::theme::cycle_theme(__THEME_VARIANT_COUNT);
         }
@@ -82,6 +76,9 @@ macro_rules! __theme_indices {
     ($idx:expr;) => {};
 }
 
+/// Expands the child list inside a [`crate::stack!`] into a
+/// `Vec<Component>`. Used internally by `stack!`; call `stack!` instead of
+/// using this macro directly.
 #[macro_export]
 macro_rules! parse_children {
     ($children:ident, text { $($part:expr),+ $(,)? } $( . $method:ident ( $($args:tt)* ) )+ , $($tail:tt)*) => {
@@ -243,14 +240,15 @@ macro_rules! parse_children {
     ($children:ident $(,)?) => {};
 }
 
-/// Embeds an asset's bytes into the binary at compile time (relative to the
-/// crate's `assets/` directory), e.g. `asset!("logo.svg")` or
-/// `asset!("fonts/Inter-Bold.ttf")`. A missing file is a compile error, and
-/// the resulting [`Asset`](crate::components::Asset) needs no platform
-/// filesystem/network access at runtime - it works identically on every
-/// backend. Best for small-to-medium files (images, fonts, icons); for
-/// large or rarely-used assets where binary size matters, use [`asset_ref!`]
+/// Embeds a file from the crate's `assets/` directory into the binary at
+/// compile time, producing an [`Asset`](crate::components::Asset). A
+/// missing file is a compile error. Best for small-to-medium files (images,
+/// fonts, icons); for large or rarely-used assets, use [`crate::asset_ref!`]
 /// instead.
+///
+/// ```ignore
+/// let logo = asset!("logo.svg");
+/// ```
 #[macro_export]
 macro_rules! asset {
     ($path:literal) => {
@@ -261,12 +259,14 @@ macro_rules! asset {
     };
 }
 
-/// Like [`asset!`], checks at compile time that the file exists under the
-/// crate's `assets/` directory, but doesn't embed its bytes - the resulting
-/// [`Asset`](crate::components::Asset) is resolved by each backend at
-/// runtime instead (from the APK's packaged assets, or fetched by URL on
-/// web), same as it always has been. Use this for large or dynamic assets
-/// (video, audio, big image sets) that shouldn't bloat the binary.
+/// References a file in the crate's `assets/` directory without embedding
+/// it into the binary, producing an [`Asset`](crate::components::Asset)
+/// that's loaded at runtime. Use this for large or dynamic assets (video,
+/// audio, big image sets) instead of [`asset!`].
+///
+/// ```ignore
+/// let clip = asset_ref!("intro.mp4");
+/// ```
 #[macro_export]
 macro_rules! asset_ref {
     ($path:literal) => {{
@@ -275,6 +275,17 @@ macro_rules! asset_ref {
     }};
 }
 
+/// Builds a [`Component`](crate::Component) that lays out its children
+/// along an axis, with spacing between them.
+///
+/// ```ignore
+/// stack! {
+///     direction: Vertical,
+///     spacing: 8.0,
+///     text { "Hello" },
+///     button { text: "Click me", on_click: do_something() },
+/// }
+/// ```
 #[macro_export]
 macro_rules! stack {
     (direction: $dir:ident, spacing: $space:expr, $($tail:tt)*) => {{

@@ -1,3 +1,13 @@
+/// Builds a JNI method signature string from a `(args) -> ret` shape.
+///
+/// Argument and return types are Java primitive keywords (`int`, `boolean`,
+/// `float`, `long`, `byte`, `void`), an array (`[type]`), or a fully
+/// qualified class name as a string literal.
+///
+/// ```ignore
+/// let d = sig!((int, "java/lang/String") -> boolean);
+/// assert_eq!(d, "(ILjava/lang/String;)Z");
+/// ```
 #[macro_export]
 macro_rules! sig {
     ( ($($args:tt)*) -> $ret:tt ) => {

@@ -1,18 +1,18 @@
-/// Defines a `goyda::platform::active_listeners::on_<name>` module with one
-/// implementation per platform, selected at compile time via the `android`
-/// / `web` / `windows` crate features on `goyda`.
+/// Declares an event listener that works across every supported platform.
 ///
-/// Every invocation must supply an `android { ... }` spec (JNI listener
-/// class + native methods, exactly like before), a `web { ... }` spec (DOM
-/// event wiring), and a `windows { ... }` spec (raw `WM_*` message wiring -
-/// see [`crate::__define_windows_listener`]) - the macro is the only thing
-/// that knows how to turn any of the three into an
-/// `attach(backend, view, callback)` function, so callers only ever provide
-/// the event name, the callback type, and per-platform wiring details. All
-/// three expansions land in a module with the same name (`on_<mod_name>`),
-/// each gated behind its own `#[cfg(feature = ...)]`, so
-/// `$crate::platform::active_listeners::on_click::attach` resolves
-/// regardless of which platform is active.
+/// Give it a name, the callback signature, and how to wire the event up on
+/// Android, web, and Windows; it produces a matching `on_<name>` module
+/// whose `attach` function you can call from any platform build.
+///
+/// ```ignore
+/// goyda_macros::define_listener! {
+///     mod_name = click,
+///     callback = dyn Fn(),
+///     android { /* JNI listener class + methods */ },
+///     web { events = [ /* DOM events */ ] },
+///     windows { custom = |backend, view, callback| { /* WM_* wiring */ } },
+/// }
+/// ```
 #[macro_export]
 macro_rules! define_listener {
     (
@@ -40,9 +40,6 @@ macro_rules! define_listener {
     };
 }
 
-/// Not public API. The `android { ... }` half of [`define_listener`] -
-/// unchanged from the original JNI listener codegen, just split out so the
-/// two platform specs can be matched independently.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __define_android_listener {
@@ -163,17 +160,6 @@ macro_rules! __define_android_listener {
     };
 }
 
-/// Not public API. The `web { ... }` half of [`define_listener`]. Two forms:
-///
-/// - `events = [ { dom_event = "...", handler = |evt: EvtTy, cb| { .. } }, ... ]`
-///   for listeners that are just "wire N independent DOM events straight to
-///   the callback" (click, change, focus/blur, input) - the macro generates
-///   the `Closure`, `add_event_listener_with_callback`, and `.forget()` for
-///   each one.
-/// - `custom = |backend, view, callback| { .. }` as an escape hatch for
-///   listeners whose DOM wiring needs shared state across multiple events
-///   (e.g. a press-and-hold timer for long-click) that doesn't fit the
-///   independent-events shape.
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __define_web_listener {
@@ -245,19 +231,6 @@ macro_rules! __define_web_listener {
     };
 }
 
-/// Not public API. The `windows { ... }` half of [`define_listener`].
-///
-/// Win32 has no single "DOM event name" abstraction to hang a declarative
-/// list off of - every event is some combination of raw `WM_*` messages
-/// (`WM_LBUTTONDOWN`/`UP` for clicks, `WM_SETFOCUS`/`KILLFOCUS` for focus,
-/// `WM_CHAR` for typed text, a `SetTimer` for long-press, ...), so unlike
-/// the web half this only has one shape: a `custom` block that registers
-/// one or more raw message hooks via
-/// [`crate::windows::register_raw_hook`](crate::windows::register_raw_hook)
-/// (every message sent to that control's `HWND` runs the hook, mirroring
-/// how the web half gets raw `web_sys` events and the android half gets raw
-/// JNI callbacks - each platform's spec works with whatever "raw event"
-/// shape that platform actually has).
 #[macro_export]
 #[doc(hidden)]
 macro_rules! __define_windows_listener {

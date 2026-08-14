@@ -36,10 +36,6 @@ thread_local! {
     static ASSET_BLOB_URLS: RefCell<std::collections::HashMap<*const u8, String>> = RefCell::new(std::collections::HashMap::new());
 }
 
-/// A URL the browser can load `asset` from: for an embedded asset, a
-/// `blob:` URL over its bytes (cached per asset, created once); otherwise
-/// the path resolved against the web build's `assets/` directory, same as
-/// it always has been.
 fn asset_url(asset: &Asset) -> String {
     let Some(bytes) = asset.bytes() else {
         return format!("assets/{}", asset.path());
@@ -72,8 +68,6 @@ thread_local! {
     static SWITCH_STYLE_INJECTED: RefCell<bool> = RefCell::new(false);
 }
 
-/// Injects the `.goyda-switch`/`.goyda-switch-track` rules `create_switch`
-/// relies on into `<head>` (once per page - subsequent calls are no-ops).
 fn ensure_switch_style_injected() {
     let already_injected = SWITCH_STYLE_INJECTED.with(|f| *f.borrow());
     if already_injected {
@@ -99,7 +93,6 @@ fn ensure_switch_style_injected() {
     }
 }
 
-/// A CSS-safe, stable `font-family` name derived from the asset path.
 fn font_family_name(asset: &Asset) -> String {
     let sanitized: String = asset
         .path()
@@ -109,9 +102,6 @@ fn font_family_name(asset: &Asset) -> String {
     format!("goyda-font-{sanitized}")
 }
 
-/// Injects an `@font-face` rule for `asset` into `<head>` (once per unique
-/// asset path - subsequent calls are no-ops) and returns the `font-family`
-/// name it registered under.
 fn ensure_font_face_injected(asset: &Asset) -> String {
     let family = font_family_name(asset);
 
@@ -357,11 +347,13 @@ fn apply_edge(element: &Element, prop: &str, edge: Edge, v: f32) {
     }
 }
 
+/// A handle to a mounted DOM element.
 #[derive(Clone)]
 pub struct WebView {
     pub element: Element,
 }
 
+/// Applies reactive updates to DOM elements.
 #[derive(Clone)]
 pub struct WebUpdater;
 
@@ -382,10 +374,12 @@ impl BackendUpdater for WebUpdater {
     }
 }
 
+/// The web rendering backend, mounting components as DOM elements.
 #[derive(Default)]
 pub struct WebBackend;
 
 impl WebBackend {
+    /// Creates a new web backend.
     pub fn new() -> Self {
         Self
     }

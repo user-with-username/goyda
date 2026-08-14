@@ -5,17 +5,6 @@ use crate::components::{Align, LayoutDirection};
 
 use super::state::{self, ControlKind};
 
-/// Resizes `hwnd` to `width`x`height` (keeping its current position - sizing
-/// is all a resize ever needs to change for the control being resized
-/// itself) and, if it's a stack panel, re-flows its children to fit,
-/// honoring the panel's `AlignItems` (cross-axis)/`JustifyContent`
-/// (main-axis) settings - each child stretches or packs to its natural size
-/// along the cross axis depending on `AlignItems`, and the whole run of
-/// children is positioned along the main axis depending on
-/// `JustifyContent`, recursing into any child that's itself a panel. Called
-/// once for the whole mounted tree on every `WM_SIZE` (see `windows/mod.rs`)
-/// - this is what makes the window resizable instead of leaving the content
-/// pinned at whatever size it first measured to.
 pub fn relayout(hwnd: HWND, width: i32, height: i32) {
     unsafe {
         SetWindowPos(hwnd, std::ptr::null_mut(), 0, 0, width.max(0), height.max(0), SWP_NOMOVE | SWP_NOZORDER);
@@ -142,10 +131,6 @@ pub fn relayout(hwnd: HWND, width: i32, height: i32) {
     }
 }
 
-/// The total main-axis extent `hwnd`'s children would need if laid out at
-/// their natural size (ignoring any current scroll offset) - what
-/// [`crate::windows::scroll_by`] clamps a `ScrollView`'s scroll position
-/// against. `None` if `hwnd` isn't a panel/scroll view.
 pub fn content_main_size(hwnd: HWND) -> Option<(LayoutDirection, i32)> {
     let panel = state::with_state(hwnd, |s| match &s.kind {
         ControlKind::Panel { direction, spacing, children } | ControlKind::ScrollView { direction, spacing, children } => {

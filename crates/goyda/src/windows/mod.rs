@@ -6,15 +6,14 @@ mod paint;
 mod state;
 
 pub use backend::WindowsBackend;
+
+/// Registers a raw window-message hook on a control, invoked with every
+/// message it receives.
 pub use state::register_raw_hook;
 
 use windows_sys::Win32::Foundation::HWND as WinHwnd;
 
-/// Appends `ch` to the control's accumulated typed text (see
-/// [`Event::TextChanged`](crate::core::events::Event::TextChanged)) and
-/// returns the buffer's new contents. Used by the `text_watcher` listener's
-/// `WM_CHAR` handling in [`crate::listeners`] - kept here instead of
-/// exposing the whole `state` module just for this one field.
+/// Appends `ch` to a text control's contents and returns the updated text.
 pub fn append_text_buffer(hwnd: WinHwnd, ch: char) -> String {
     let text = state::with_state(hwnd, |s| {
         s.text_buffer.push(ch);
@@ -32,11 +31,8 @@ pub fn append_text_buffer(hwnd: WinHwnd, ch: char) -> String {
     text
 }
 
-/// Flips `hwnd`'s `ControlState::checked` and returns the new value. Used by
-/// [`create_checkbox`](backend::WindowsBackend)/`create_switch`'s own
-/// built-in click-to-toggle behavior, and (for any other control a developer
-/// attaches `.on_checked_change(...)` to) by the `checked_change` listener's
-/// `WM_LBUTTONUP` handling in [`crate::listeners`].
+/// Toggles a checkbox, switch, or radio button's checked state and returns
+/// the new value.
 pub fn toggle_checked(hwnd: WinHwnd) -> bool {
     let now = state::with_state(hwnd, |s| {
         s.checked = !s.checked;
@@ -51,13 +47,8 @@ pub fn toggle_checked(hwnd: WinHwnd) -> bool {
     now
 }
 
-/// Whether `hwnd` is a [`Checkbox`](crate::components::Checkbox)/
-/// [`Switch`](crate::components::Switch) - these already toggle themselves
-/// on click (see `create_checkbox`/`create_switch` in
-/// [`backend::WindowsBackend`]), so the `checked_change` listener's
-/// `WM_LBUTTONUP` hook only needs to *read* their state instead of also
-/// toggling it (which would double-toggle back to the original value on
-/// every click).
+/// Whether `hwnd` is a control that already toggles its own checked state
+/// on click (a checkbox, switch, or radio button).
 pub fn is_self_toggling(hwnd: WinHwnd) -> bool {
     state::with_state(hwnd, |s| {
         matches!(s.kind, state::ControlKind::Checkbox { .. } | state::ControlKind::Switch | state::ControlKind::RadioButton { .. })
@@ -65,24 +56,20 @@ pub fn is_self_toggling(hwnd: WinHwnd) -> bool {
     .unwrap_or(false)
 }
 
+/// Returns whether `hwnd` is currently checked.
 pub fn is_checked(hwnd: WinHwnd) -> bool {
     state::with_state(hwnd, |s| s.checked).unwrap_or(false)
 }
 
-/// Adds `hwnd` to `group`'s membership list - called once, at
-/// `create_radio_button` time (see `windows/backend.rs`).
+/// Adds `hwnd` to the named radio button group.
 pub fn register_radio(hwnd: WinHwnd, group: &str) {
     state::RADIO_GROUPS.with(|g| {
         g.borrow_mut().entry(group.to_string()).or_default().push(hwnd);
     });
 }
 
-/// Selects `hwnd` (sets `checked = true`) and deselects every other member
-/// of `group`, repainting all of them. Used by the intrinsic click
-/// behavior `create_radio_button` registers - independent of whether the
-/// app attaches `.on_checked_change(...)`, which only needs to *observe*
-/// this (see `crate::listeners`'s `checked_change` arm and
-/// [`is_self_toggling`]).
+/// Selects `hwnd` and deselects every other member of its radio button
+/// group.
 pub fn select_radio(hwnd: WinHwnd, group: &str) {
     let members = state::RADIO_GROUPS.with(|g| g.borrow().get(group).cloned().unwrap_or_default());
     for member in members {
@@ -101,21 +88,18 @@ pub fn select_radio(hwnd: WinHwnd, group: &str) {
     }
 }
 
-/// Whether `hwnd` is a [`TextInput`](crate::components::TextInput) - these
-/// already accumulate typed text themselves (see `create_text_input` in
-/// [`backend::WindowsBackend`]), so the `text_watcher` listener's `WM_CHAR`
-/// hook only needs to *read* the buffer instead of also appending to it
-/// (which would insert every character twice).
+/// Returns whether `hwnd` is a text input control.
 pub fn is_text_input(hwnd: WinHwnd) -> bool {
     state::with_state(hwnd, |s| matches!(s.kind, state::ControlKind::TextInput { .. })).unwrap_or(false)
 }
 
+/// Returns a text control's current contents.
 pub fn current_text_buffer(hwnd: WinHwnd) -> String {
     state::with_state(hwnd, |s| s.text_buffer.clone()).unwrap_or_default()
 }
 
-/// Removes the last character from the control's accumulated typed text (a
-/// no-op on an already-empty buffer) and returns the buffer's new contents.
+/// Removes the last character from a text control's contents (a no-op if
+/// already empty) and returns the updated text.
 pub fn backspace_text_buffer(hwnd: WinHwnd) -> String {
     let text = state::with_state(hwnd, |s| {
         s.text_buffer.pop();
@@ -133,12 +117,8 @@ pub fn backspace_text_buffer(hwnd: WinHwnd) -> String {
     text
 }
 
-/// Sets a [`Progress`](crate::components::Progress) bar's value from a
-/// click/drag's `x` position (window-relative, i.e. straight from a
-/// `WM_LBUTTONDOWN`/`WM_MOUSEMOVE`'s `lParam`) as a fraction of the
-/// control's *current* width - not its stored `natural_size`, which can be
-/// stale once the enclosing stack has stretched the control to fill its
-/// cross axis (see `windows/layout.rs`).
+/// Sets a progress bar's value from a click/drag's window-relative `x`
+/// position, as a fraction of the control's width.
 pub fn set_progress_from_x(hwnd: WinHwnd, x: i32) {
     let width = state::client_rect(hwnd).right.max(1);
     let fraction = (x as f32 / width as f32).clamp(0.0, 1.0);
@@ -154,6 +134,7 @@ pub fn set_progress_from_x(hwnd: WinHwnd, x: i32) {
     }
 }
 
+/// Returns a progress bar's current value, from `0.0` to `1.0`.
 pub fn current_progress(hwnd: WinHwnd) -> f32 {
     state::with_state(hwnd, |s| match &s.kind {
         state::ControlKind::Progress { value } => *value,
@@ -162,11 +143,7 @@ pub fn current_progress(hwnd: WinHwnd) -> f32 {
     .unwrap_or(0.0)
 }
 
-/// Adjusts a [`ScrollView`](crate::components::ScrollView)'s scroll
-/// position by `delta` pixels (clamped to `0..=(content size - viewport
-/// size)`) and immediately re-flows its children to match - used by the
-/// intrinsic `WM_MOUSEWHEEL` hook `create_scroll_view` registers (see
-/// `windows/backend.rs`).
+/// Scrolls a scroll view by `delta` pixels, clamped to its content bounds.
 pub fn scroll_by(hwnd: WinHwnd, delta: i32) {
     let Some((direction, content_main)) = layout::content_main_size(hwnd) else { return };
     let rect = state::client_rect(hwnd);
@@ -203,23 +180,10 @@ fn wide(s: &str) -> Vec<u16> {
 
 thread_local! {
     static ROOT: RefCell<Option<(HINSTANCE, HWND)>> = RefCell::new(None);
-    /// Keeps the mounted page's `Component` (and the `Signal` subscriptions
-    /// its reactive bindings hold) alive for as long as it's on screen -
-    /// dropped and replaced on the next [`navigate`] call.
     static MOUNTED: RefCell<Option<Component>> = RefCell::new(None);
-    /// The route last mounted by [`navigate`] (or `"/"` at startup) - has no
-    /// OS-level source of truth to read back the way the web target reads
-    /// `window.location().pathname()`, so it's tracked by hand here purely
-    /// for [`rerender`] to know what to re-mount.
     static CURRENT_PATH: RefCell<String> = RefCell::new(String::from("/"));
 }
 
-/// Reads `HKCU\...\Personalize\AppsUseLightTheme` to seed the initial
-/// [`crate::core::theme::ThemeMode`] from whatever Windows' own
-/// Settings > Personalization > Colors mode is set to - see
-/// `crate::core::theme`'s doc comment for how this plugs into `theme!`.
-/// `0` means dark, any other value (including "key/value missing", the
-/// pre-Windows-10-1809 case) means light.
 fn detect_theme_mode() -> crate::core::theme::ThemeMode {
     use windows_sys::Win32::System::Registry::{RegGetValueW, HKEY_CURRENT_USER, RRF_RT_REG_DWORD};
 
@@ -319,13 +283,6 @@ fn register_classes(hinstance: HINSTANCE) {
     }
 }
 
-/// Renders `page` into `root`. `fit_window` controls what happens to the
-/// *window's own* size: `true` (initial launch) sizes the window to the
-/// page's natural content size, like a desktop app popping up at a sensible
-/// default size; `false` ([`navigate`]) leaves the window exactly as the
-/// user last resized it and just re-flows the new page into that existing
-/// client area - switching pages resizing the window back to some default
-/// would undo a resize the user did on purpose.
 fn mount(hinstance: HINSTANCE, root: HWND, page: &Page, fit_window: bool) {
     // Wrapped in a scroll view so a page taller than the window scrolls
     // instead of silently clipping at the bottom edge - `AlignItems`
@@ -366,9 +323,6 @@ fn mount(hinstance: HINSTANCE, root: HWND, page: &Page, fit_window: bool) {
     MOUNTED.with(|m| *m.borrow_mut() = Some(component));
 }
 
-/// Tears down whatever's currently mounted under `root` and mounts `page`
-/// in its place - the shared body of [`navigate`] and [`rerender`], which
-/// differ only in whether the mounted route actually changes.
 fn remount(page: &Page) {
     let Some((hinstance, root)) = ROOT.with(|r| *r.borrow()) else { return };
 
@@ -402,12 +356,7 @@ fn remount(page: &Page) {
     }
 }
 
-/// Switches the mounted app to whichever `#[page(...)]` is registered for
-/// `path` (see [`crate::find_page`]) - reparents/destroys nothing from the
-/// previous page explicitly; each control is a genuine `HWND`, so
-/// `DestroyWindow`ing the old root's children (done implicitly by replacing
-/// them - see [`remount`]) tears them down the same way closing any Win32
-/// window does.
+/// Navigates the app to the `#[page(...)]` registered for `path`.
 pub fn navigate(path: &str) {
     let Some(page) = find_page(path) else {
         #[cfg(debug_assertions)]
@@ -419,39 +368,14 @@ pub fn navigate(path: &str) {
     CURRENT_PATH.with(|p| *p.borrow_mut() = path.to_string());
 }
 
-/// Re-renders whichever route [`navigate`] last mounted (or `"/"` if it's
-/// never been called), in place - no route change, no history entry. Used
-/// by [`crate::core::theme::set_theme_mode`] so a runtime `theme!` switch
-/// shows up immediately.
+/// Rebuilds and redisplays the currently mounted page in place, without
+/// changing the route.
 pub fn rerender() {
     let path = CURRENT_PATH.with(|p| p.borrow().clone());
     let Some(page) = find_page(&path) else { return };
     remount(page);
 }
 
-/// Loads `path` (a freshly rebuilt copy of the consumer crate's `cdylib`,
-/// under a fresh never-before-used filename - Windows locks a loaded DLL's
-/// backing file, so overwriting the *same* path a previous generation used
-/// would fail) into this already-running process and re-renders the
-/// current route from whatever `#[page(...)]`s it just registered.
-///
-/// This works (rather than silently rendering the *old*, already-loaded
-/// generation's pages) because `goyda` itself is only ever loaded into this
-/// process **once**, as an ordinary Windows DLL (`goyda.dll`, produced by
-/// `[lib] crate-type = ["rlib", "dylib"]`) - both this host process and
-/// every generation of the consumer's `cdylib` link against that *same*
-/// `goyda.dll` dynamically (via `-C prefer-dynamic`, set by `goyda-cli`'s
-/// windows target for exactly this reason) instead of each statically
-/// compiling in their own private copy. That's what makes this a real
-/// in-process code swap and not a repeat of the old file-based state-
-/// snapshotting hack: `inventory`'s page registry, [`state::CONTROLS`],
-/// `ROOT`/`MOUNTED`/`CURRENT_PATH`, and every already-mounted control's
-/// `HWND` all live in that one shared `goyda.dll` instance, untouched by
-/// loading a new consumer dylib alongside it - the *only* new code is the
-/// freshly loaded dylib's `#[page(...)]` factory functions, which
-/// `inventory`'s registration ctors (run automatically by the OS loader as
-/// part of `LoadLibraryW`) add to that same shared registry the moment the
-/// call below returns.
 fn hot_swap_dylib(path: &str) {
     let wide_path = wide(path);
     let handle = unsafe { LoadLibraryW(wide_path.as_ptr()) };
@@ -464,10 +388,6 @@ fn hot_swap_dylib(path: &str) {
     remount(page);
 }
 
-/// A double-clicked `.exe` has no console attached to print panic messages
-/// to, so they'd otherwise vanish silently - this puts them in front of the
-/// user as a message box instead. Running from a terminal still also prints
-/// the usual panic output there (this hook doesn't replace it).
 fn install_panic_hook() {
     let default_hook = std::panic::take_hook();
     std::panic::set_hook(Box::new(move |info| {
@@ -480,21 +400,11 @@ fn install_panic_hook() {
     }));
 }
 
-/// Runs the app: registers goyda's window classes, creates the top-level
-/// window, mounts the initial `#[page("/")]`, and pumps the Win32 message
-/// loop until the window closes. Called from the small, persistent `fn
-/// main()` the `goy` CLI generates for a windows build - see
-/// `goyda-cli/src/targets/windows`.
+/// Runs the app: creates the window, mounts the initial `#[page("/")]`,
+/// and pumps the message loop until the window closes.
 ///
-/// `initial_dylib`, when given, is `LoadLibraryW`'d before looking up the
-/// initial page - the consumer crate's `#[page(...)]`s live there (built as
-/// a `cdylib`, not statically linked into this host binary), so their
-/// `inventory` registrations only exist once this returns. Every later
-/// reload swaps in a new generation of that same dylib via
-/// [`hot_swap_dylib`] without this function (or its message loop) ever
-/// returning. `None` is only for a consumer that statically links `goyda`
-/// and its own pages directly into one binary itself (no hot reload) -
-/// `goyda-cli` never does this.
+/// `initial_dylib`, when given, is loaded first so its `#[page(...)]`s are
+/// registered before the initial page is looked up.
 pub fn run(initial_dylib: Option<&std::path::Path>) {
     install_panic_hook();
 

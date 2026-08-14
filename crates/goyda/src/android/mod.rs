@@ -9,8 +9,10 @@ use jni::objects::GlobalRef;
 use once_cell::sync::OnceCell;
 use std::sync::Mutex;
 
+/// The running app's connection to its Android host, set once at startup.
 pub static BRIDGE: OnceCell<Mutex<AndroidBridge>> = OnceCell::new();
 
+/// State shared between `goyda` and the Android host it's embedded in.
 pub struct AndroidBridge {
     pub root: GlobalRef,
     pub context: GlobalRef,

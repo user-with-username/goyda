@@ -19,8 +19,6 @@ fn rasterize_svg(bytes: &[u8]) -> Option<(u32, u32, Vec<u8>)> {
     Some((width, height, pixmap.data().to_vec()))
 }
 
-/// Converts top-down, straight-alpha RGBA8 rows into the premultiplied BGRA8
-/// a 32bpp `AlphaBlend` source bitmap needs.
 fn rgba_to_premultiplied_bgra(rgba: &[u8]) -> Vec<u8> {
     let mut out = Vec::with_capacity(rgba.len());
     for px in rgba.chunks_exact(4) {
@@ -33,9 +31,6 @@ fn rgba_to_premultiplied_bgra(rgba: &[u8]) -> Vec<u8> {
     out
 }
 
-/// Decodes an asset's bytes (embedded, or read from the exe-relative
-/// `assets/` directory for `asset_ref!`/path-only assets) and builds a
-/// top-down 32bpp `HBITMAP` ready for `AlphaBlend`.
 pub fn decode_to_bitmap(asset: &Asset) -> Option<(HBITMAP, i32, i32)> {
     let bytes = asset.bytes().map(|b| b.to_vec()).or_else(|| read_asset_file(asset.path()))?;
 
